@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xmlns:foaf="http://xmlns.com/foaf/0.1/" xmlns:og="http://ogp.me/ns#"
+  xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:schema="http://schema.org/"
+  xmlns:sioc="http://rdfs.org/sioc/ns#" xmlns:sioct="http://rdfs.org/sioc/types#"
+  xmlns:skos="http://www.w3.org/2004/02/skos/core#" xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+  xmlns:nasdaq="http://nasdaq.com/reference/feeds/1.0" version="2.0" xml:base="https://www.nasdaq.com/feed/rssoutbound">
+ <channel>
+  <title>NVDA Feed</title>
+  <link>https://www.nasdaq.com/feed/rssoutbound</link>
+  <description>This feed is responsible for generating the rss feed related to the topic NVDA</description>
+  <language>en</language>
+  <item>
+   <title>1 Unstoppable Stock-Split Stock to Buy Before It Joins Nvidia, Alphabet, Microsoft, and Apple in the $3 Trillion Club</title>
+   <link>https://www.nasdaq.com/articles/1-unstoppable-stock-split-stock-buy-it-joins-nvidia-alphabet-microsoft-and-apple-3</link>
+   <description>
+        Key PointsFacebook's parent company, Meta Platforms, is planning to execute a 2-for-1 stock split in January by introducing a new class of shares.
+    </description>
+   <pubDate>Mon, 26 Oct 2026 12:51:00 +0000</pubDate>
+   <guid isPermaLink="true">https://www.nasdaq.com/articles/1-unstoppable-stock-split-stock-buy-it-joins-nvidia-alphabet-microsoft-and-apple-3?time=1793019060</guid>
+   <dc:creator>The Motley Fool</dc:creator>
+   <category>Markets</category>
+   <nasdaq:tickers>META,META,MSFT,GOOGL,AAPL,NVDA,GOOG</nasdaq:tickers>
+  </item>
+  <item>
+   <title>Zacks Investment Ideas feature highlights: Bloom Energy, SanDisk, AMD, CoreWeave, Nebius, NVIDIA and SpaceX's</title>
+   <link>https://www.nasdaq.com/articles/zacks-investment-ideas-feature-highlights-bloom-energy-sandisk-amd-coreweave-nebius-nvidia</link>
+   <description>
+        AI stocks face mounting debt fears after steep pullbacks, but rising capital spending forecasts and strong demand may keep the AI investment boom alive.
+    </description>
+   <pubDate>Mon, 26 Oct 2026 12:21:00 +0000</pubDate>
+   <guid isPermaLink="true">https://www.nasdaq.com/articles/zacks-investment-ideas-feature-highlights-bloom-energy-sandisk-amd-coreweave-nebius-nvidia?time=1793017260</guid>
+   <dc:creator>Zacks</dc:creator>
+   <category>Technology</category>
+   <nasdaq:tickers>AMD,NVDA,SNDK,BE,NBIS,CRWV</nasdaq:tickers>
+  </item>
+  <item>
+   <title>Alphabet, Microsoft, Amazon, Meta, Tesla, Nvidia and Micron are part of Zacks Earnings Preview</title>
+   <link>https://www.nasdaq.com/articles/alphabet-microsoft-amazon-meta-tesla-nvidia-and-micron-are-part-zacks-earnings-preview</link>
+   <description>
+        Alphabet, Microsoft and Amazon headline a busy earnings week as S&amp;P 500 profits are forecast to rise 26.2%, with estimates for Q4 and 2027 trending higher.
+    </description>
+   <pubDate>Mon, 26 Oct 2026 12:06:00 +0000</pubDate>
+   <guid isPermaLink="true">https://www.nasdaq.com/articles/alphabet-microsoft-amazon-meta-tesla-nvidia-and-micron-are-part-zacks-earnings-preview?time=1793016360</guid>
+   <dc:creator>Zacks</dc:creator>
+   <category>Technology</category>
+   <nasdaq:tickers>AMZN,MSFT,MU,NVDA,TSLA,GOOGL,META</nasdaq:tickers>
+  </item>
+  
+ </channel>
+</rss>

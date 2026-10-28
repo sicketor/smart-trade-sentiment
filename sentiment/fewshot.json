@@ -1,0 +1,142 @@
+[
+ {
+  "id": "480f61008b5cfd6b61465209d905273d9d711034",
+  "ticker": "QCOM",
+  "channel": "news",
+  "text": "Exclusive-Qualcomm to cut jobs worldwide in performance-focused layoffs, internal memo shows",
+  "cls": -2
+ },
+ {
+  "id": "8987bc44581a9787800b9f8c745b64ac0b562ac1",
+  "ticker": "NIO",
+  "channel": "news",
+  "text": "Nio stock Sleeping with the MARGIN. The enemy in your portfolio. #musk #tsla #nio",
+  "cls": -2
+ },
+ {
+  "id": "16a0cef7eb648ee21f64be76fb7a96756a052bca",
+  "ticker": "ADBE",
+  "channel": "news",
+  "text": "Adobe stock slides despite earnings beats; new CEO and AI growth could spark turnaround.",
+  "cls": -1
+ },
+ {
+  "id": "695162f8b3fd7230b1925f8cf3b2615b007d4956",
+  "ticker": "GS",
+  "channel": "news",
+  "text": "Recent labor market data show some signs of AI-related hiring headwinds | Investing.com -- Recent U.S. labor market data show early signs that artificial intelligence adoption is weighing on hiring, although the broad...",
+  "cls": -1
+ },
+ {
+  "id": "8491d2caf07dc3c0a781b7f64426d8ab39466fed",
+  "ticker": "NET",
+  "channel": "news",
+  "text": "AI agents are inside U.S. bank accounts. But nobody knows how. | Major U.S. banks are detecting unauthorized AI agents inside customer accounts, and they can't tell them apart from humans. Host Ejaaz Ahamadeen breaks ...",
+  "cls": 0
+ },
+ {
+  "id": "b91ee3b563aa0bca48f89759d89e85ff4a176b42",
+  "ticker": "GS",
+  "channel": "news",
+  "text": "Goldman Sachs tokenized stock (xStock) USD (GSX37025-USD) Cryptocurrency Forum & Discussion - Yahoo Finance",
+  "cls": 0
+ },
+ {
+  "id": "70c226d2b06d5ba1dff353a93319e292d29f78f0",
+  "ticker": "SHW",
+  "channel": "news",
+  "text": "Sherwin-Williams, Wells Fargo, and 7 Other Stocks for a Good-Enough Economy",
+  "cls": 1
+ },
+ {
+  "id": "1e46a375ed74e6b008495ed97084d49b65ef2f38",
+  "ticker": "TMO",
+  "channel": "news",
+  "text": "TMO Q3 deep dive: pharma demand, AI integration, and end-market recovery drive momentum | Life sciences company Thermo Fisher (NYSE:TMO) reported Q3 2026 results beating Wall Street’s revenue expectations, with sales ...",
+  "cls": 1
+ },
+ {
+  "id": "a5916dc76955955be82a2fa7b7449ffe8a0c32e9",
+  "ticker": "BRK.B",
+  "channel": "news",
+  "text": "Berkshire Hathaway invests $330 mn in Bending Spoons, raises stake to 4%",
+  "cls": 2
+ },
+ {
+  "id": "98456b38d2edfda33af16782285f54193defb088",
+  "ticker": "AMZN",
+  "channel": "news",
+  "text": "3M Is an AI Data Center Play Now. An Expanded Deal With Amazon Boosts the Stock.",
+  "cls": 2
+ },
+ {
+  "id": "ee2a2cb1a7fa6a9a6b32a58f2f687652ea06e18d",
+  "ticker": "WFC",
+  "channel": "social",
+  "text": "$WFC AI agents gonna dump",
+  "cls": -2
+ },
+ {
+  "id": "3e65dbaa218f88f8167570d3877f374020386baf",
+  "ticker": "RBLX",
+  "channel": "social",
+  "text": "$RBLX massive rejection crash coming",
+  "cls": -2
+ },
+ {
+  "id": "e8f214675353fb700be6a8bf9bf0d3556bffc152",
+  "ticker": "VZ",
+  "channel": "social",
+  "text": "$VZ It is incredibly frustrating to watch public sentiment or investor panic override the baseline realities of development cycles. When you",
+  "cls": -1
+ },
+ {
+  "id": "d59c43fd419ee7954ea95e35bc24ebb3b6c56331",
+  "ticker": "SBUX",
+  "channel": "social",
+  "text": "$CMG & $SBUX merger will never be! https://seekingalpha.com/article/4956895-starbucks-ditches-chipotle-deal-but-headwinds-still-linger",
+  "cls": -1
+ },
+ {
+  "id": "0b88692fe8735c7d32b58a17e42bd507b9cfde51",
+  "ticker": "SHW",
+  "channel": "social",
+  "text": "$SHW Sherwin-Williams supplies paint and coatings to builders and remodelers alike, linking it to a housing market where the NAHB builder se",
+  "cls": 0
+ },
+ {
+  "id": "1ee2b2cac06eac3fc8b013a44a7f2694eddce79a",
+  "ticker": "AMZN",
+  "channel": "social",
+  "text": "$SPCX $170 $AMZN $280 (earnings) Both coming soon",
+  "cls": 0
+ },
+ {
+  "id": "7ddb0c6dba43918b6cb3b7e1ce5f18d73ac58320",
+  "ticker": "COP",
+  "channel": "social",
+  "text": "$COP is up 62% this year. Brent crude fell 3% to $115.22 on Tuesday, per the EIA. getbreakaway.com/COP",
+  "cls": 1
+ },
+ {
+  "id": "22c8f304c50dbdbea7702192d022a778ab67b41c",
+  "ticker": "UPS",
+  "channel": "social",
+  "text": "$UPS looking for $110 premarket on earnings day. Then sell before the CC.",
+  "cls": 1
+ },
+ {
+  "id": "5634577d69cf5f487fd2223046bdee5a54fdbc38",
+  "ticker": "NFLX",
+  "channel": "social",
+  "text": "$NFLX bought some and calls!",
+  "cls": 2
+ },
+ {
+  "id": "ef78fdc9db55d1ee427f53a42d21bb6c130b1f5e",
+  "ticker": "NKE",
+  "channel": "social",
+  "text": "$NKE here comes $38 Profit takers up",
+  "cls": 2
+ }
+]

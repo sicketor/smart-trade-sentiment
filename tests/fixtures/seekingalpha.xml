@@ -1,0 +1,109 @@
+<?xml version="1.0"?>
+<rss xmlns:sa="https://seekingalpha.com/api/1.0" xmlns:media="http://search.yahoo.com/mrss/" version="2.0">
+  <channel>
+    <title>NVIDIA Corporation - News and Analysis on Seeking Alpha</title>
+    <link>https://seekingalpha.com</link>
+    <description>&#xA9; seekingalpha.com. Use of this feed is limited to personal, non-commercial use and is governed by Seeking Alpha's Terms of Use (https://about.seekingalpha.com/terms). Publishing this feed for public or commercial use and/or misrepresentation by a third party is prohibited.</description>
+    <item>
+      <title>Nvidia Or AMD On This Dip? Pick The Safest</title>
+      <link>https://seekingalpha.com/article/4957465-nvidia-or-amd-on-this-dip-pick-the-safest?source=feed_symbol_NVDA</link>
+      <guid isPermaLink="false">https://seekingalpha.com/Article:4957465</guid>
+      <pubDate>Mon, 26 Oct 2026 09:25:53 -0400</pubDate>
+      <sa:author_name>Nova Capital</sa:author_name>
+      <media:thumbnail url=""/>
+      <sa:picture/>
+      <sa:stock>
+        <sa:symbol>AMD</sa:symbol>
+        <sa:company_name>Advanced Micro Devices, Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>NVDA</sa:symbol>
+        <sa:company_name>NVIDIA Corporation</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>AMD:CA</sa:symbol>
+        <sa:company_name>Advanced Micro Devices, Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>NVDA:CA</sa:symbol>
+        <sa:company_name>NVIDIA Corporation</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>ZAMD:CA</sa:symbol>
+        <sa:company_name>Advanced Micro Devices, Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>ZNVD:CA</sa:symbol>
+        <sa:company_name>NVIDIA Corporation</sa:company_name>
+      </sa:stock>
+    </item>
+    <item>
+      <title>SpaceX secures $40B Apollo financing deal to expand AI infrastructure</title>
+      <link>https://seekingalpha.com/symbol/NVDA/news?source=feed_symbol_NVDA</link>
+      <guid isPermaLink="false">https://seekingalpha.com/MarketCurrent:4657124</guid>
+      <pubDate>Mon, 26 Oct 2026 08:42:30 -0400</pubDate>
+      <sa:author_name>Rob Williams</sa:author_name>
+      <media:thumbnail url=""/>
+      <sa:picture/>
+      <sa:stock>
+        <sa:symbol>NVDA</sa:symbol>
+        <sa:company_name>NVIDIA Corporation</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>APO</sa:symbol>
+        <sa:company_name>Apollo Global Management, Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>SPCX</sa:symbol>
+        <sa:company_name>Space Exploration Technologies Corp.</sa:company_name>
+      </sa:stock>
+    </item>
+    <item>
+      <title>Jefferies sees semiconductor equipment growth through 2028</title>
+      <link>https://seekingalpha.com/symbol/NVDA/news?source=feed_symbol_NVDA</link>
+      <guid isPermaLink="false">https://seekingalpha.com/MarketCurrent:4657065</guid>
+      <pubDate>Mon, 26 Oct 2026 06:39:31 -0400</pubDate>
+      <sa:author_name>Pratyush Thakur</sa:author_name>
+      <media:thumbnail url=""/>
+      <sa:picture/>
+      <sa:stock>
+        <sa:symbol>AMAT</sa:symbol>
+        <sa:company_name>Applied Materials, Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>NVDA</sa:symbol>
+        <sa:company_name>NVIDIA Corporation</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>LRCX</sa:symbol>
+        <sa:company_name>Lam Research Corporation</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>ASML</sa:symbol>
+        <sa:company_name>ASML Holding N.V.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>DINRF</sa:symbol>
+        <sa:company_name>SCREEN Holdings Co., Ltd.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>CRWV</sa:symbol>
+        <sa:company_name>CoreWeave, Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>AMZN</sa:symbol>
+        <sa:company_name>Amazon.com, Inc.</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>MSFT</sa:symbol>
+        <sa:company_name>Microsoft Corporation</sa:company_name>
+      </sa:stock>
+      <sa:stock>
+        <sa:symbol>META</sa:symbol>
+        <sa:company_name>Meta Platforms, Inc.</sa:company_name>
+      </sa:stock>
+    </item>
+    
+  </channel>
+</rss>
+

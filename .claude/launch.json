@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "labeling",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "labeling.server", "--port", "8765", "--labeler", "tom", "--no-browser"],
+      "port": 8765
+    },
+    {
+      "name": "labeling-review",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "labeling.server", "--port", "8766", "--labeler", "tom", "--no-browser", "--review", "offtarget"],
+      "port": 8766
+    },
+    {
+      "name": "labeling-marketaux",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "labeling.server", "--port", "8767", "--labeler", "tom", "--no-browser", "--source", "marketaux"],
+      "port": 8767
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<rss version="2.0">
+    <channel>
+        <copyright>Copyright (c) 2026 Yahoo Inc. All rights reserved.</copyright>
+        <description>Latest Financial News for NVDA</description>
+        <image>
+            <height>45</height>
+            <link>http://finance.yahoo.com/q/h?s=NVDA</link>
+            <title>Yahoo! Finance: NVDA News</title>
+            <url>https://s.yimg.com/rz/stage/p/yahoo_finance_en-US_h_p_finance_2.png</url>
+            <width>144</width>
+        </image>
+        <item>
+            <description>SAN DIEGO, October 26, 2026--Retiree Alleges Morgan Stanley Covered Call Strategy Cost Him His Apple and NVIDIA Shares; Reif Law Group Files Financial Elder Abuse Claims</description>
+            <guid isPermaLink="false">05b67827-0ac4-3eab-b6e6-293f378b197f</guid>
+            <link>https://finance.yahoo.com/markets/options/articles/retiree-alleges-morgan-stanley-covered-150000527.html?.tsrc=rss</link>
+            <pubDate>Mon, 26 Oct 2026 15:00:00 +0000</pubDate>
+            <title>Retiree Alleges Morgan Stanley Covered Call Strategy Cost Him His Apple and NVIDIA Shares; Reif Law Group Files Financial Elder Abuse Claims</title>
+        </item>
+        <item>
+            <description>Nvidia and industry executives maintain that demand for computing power remains strong, even as financing becomes more expensive for some providers.</description>
+            <guid isPermaLink="false">02210f8d-5af6-3250-b54b-9384968739c5</guid>
+            <link>https://www.ibtimes.com/elon-musk-warns-guppy-level-death-hundreds-ai-cloud-firms-others-are-not-so-sure-3808978?.tsrc=rss</link>
+            <pubDate>Mon, 26 Oct 2026 14:55:08 +0000</pubDate>
+            <title>Elon Musk Warns Of 'Guppy-Level Death' For Hundreds of AI Cloud Firms. Others Are Not so Sure.</title>
+        </item>
+        <item>
+            <description>Almost every Wall Street analyst is pounding the table on Nvidia, yet a growing chorus of skeptics argues the entire AI spending boom rests on a foundation that has yet to deliver a single dollar of payoff outside of tech.</description>
+            <guid isPermaLink="false">7bb97af7-eeb0-3e80-8941-d8c0d88cb788</guid>
+            <link>https://247wallst.com/investing/2026/10/26/98-of-nvidia-analysts-have-buy-rating/?.tsrc=rss</link>
+            <pubDate>Mon, 26 Oct 2026 14:51:45 +0000</pubDate>
+            <title>98% Of Nvidia Analysts Have “Buy” Rating</title>
+        </item>
+        
+        <language>en-US</language>
+        <lastBuildDate>Mon, 26 Oct 2026 15:10:03 +0000</lastBuildDate>
+        <link>http://finance.yahoo.com/q/h?s=NVDA</link>
+        <title>Yahoo! Finance: NVDA News</title>
+    </channel>
+</rss>
