@@ -71,13 +71,16 @@ class ScoredItem:
 @dataclass
 class ChannelSnapshot:
     channel: Channel
-    score: float | None          # -100..+100 after shrinkage; None when coverage too low
-    grade: int | None            # -3..+3
-    agreement: float | None      # 0..100
+    score: float | None          # display -100..+100: normalized when a norm exists, else == raw; None when coverage too low
+    grade: int | None            # -3..+3 (percentile cuts of z with a norm, fixed thresholds without)
+    agreement: float | None      # 0..100 over the non-neutral items
     n_items: int
     n_effective: float           # sum of weights
-    momentum: float | None       # score_24h - mean of daily scores over 7d (needs history)
+    momentum: float | None       # raw_24h - mean of daily raws over the window (raw scale)
     bull_ratio: float | None     # social only: bullish / (bullish + bearish) stance, 0..1
+    raw: float | None = None     # shrunk non-neutral mean -100..+100 before normalization
+    z: float | None = None       # (raw - mu) / sd against the blended history / cross-section stats
+    pos_ratio: float | None = None   # weight share of positive among non-neutral items (>= 3 of them)
 
 
 @dataclass

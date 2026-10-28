@@ -36,6 +36,12 @@ HALF_LIFE_HOURS = {"news": 24.0, "filings": 72.0, "social": 6.0}
 SHRINK_K = {"news": 3.0, "filings": 2.0, "social": 5.0}
 CHANNEL_WEIGHTS = {"news": 0.45, "filings": 0.25, "social": 0.30}
 MIN_EFFECTIVE_ITEMS = 1.0   # below this a channel shows "low data"
+MIN_ITEMS = 3               # fewer items with weight > 0 -> "low data"
+# Score normalization: cross-section stats from the backfill, blended with the ticker's own history.
+AGG_NORM_PATH = ROOT / "sentiment" / "aggregate_norm.json"
+HIST_PRIOR_DAYS = 60        # history weight = n / (n + HIST_PRIOR_DAYS)
+HIST_MIN_DAYS = 5           # fewer history days -> cross-section stats only
+SD_FLOOR_FRAC = 0.25        # sd never below this fraction of the cross-section sd
 SOURCE_WEIGHT = {
     "sec": 1.0,
     "tier1": 0.9,      # Reuters, Bloomberg, WSJ, AP, CNBC, Dow Jones, Barron's, FT

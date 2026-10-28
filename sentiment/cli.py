@@ -6,6 +6,7 @@ import json
 import logging
 import sys
 import time
+from datetime import datetime, timezone
 
 from . import config
 
@@ -20,6 +21,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--sources", help="comma-separated adapter ids (default: all)")
     a.add_argument("--items", action="store_true", help="include every scored item")
     a.add_argument("--device", default="auto")
+    a.add_argument("--no-save", action="store_true", help="do not append results to data/snapshots/")
     a.add_argument("--out", help="write JSON here instead of stdout")
     args = p.parse_args(argv)
 
@@ -27,17 +29,26 @@ def main(argv: list[str] | None = None) -> int:
     tickers = [t.upper() for t in args.tickers][:5]
     from .pipeline import Engine, snapshot_to_dict
 
+    from .snapshots import history, record
+
     engine = Engine(use_llm=not args.no_llm, device=args.device)
     results, errors = [], {}
     for t in tickers:
         t0 = time.perf_counter()
+        now_utc = datetime.now(timezone.utc)
         try:
             snap, items = engine.analyze(t, days=args.days,
-                                         only=args.sources.split(",") if args.sources else None)
+                                         only=args.sources.split(",") if args.sources else None,
+                                         history=history(t, now_utc), as_of=now_utc)
         except Exception as e:
             logging.exception("analyze %s failed", t)
             errors[t] = f"{type(e).__name__}: {e}"
             continue
+        if not args.no_save:
+            try:
+                record(snapshot_to_dict(snap, None))
+            except Exception:
+                logging.exception("saving snapshot for %s failed", t)
         d = snapshot_to_dict(snap, items if args.items else None)
         d["elapsed_s"] = round(time.perf_counter() - t0, 1)
         results.append(d)

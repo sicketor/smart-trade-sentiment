@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 
 from . import __version__, config
-from .aggregate import item_weight, summarize
+from .aggregate import item_weight, load_norm, summarize
 from .dedup import cluster
 from .features import extract
 from .http import Http
@@ -40,6 +40,12 @@ class Engine:
             labeler = GeminiLabeler()
             self.llm = labeler if labeler.available else None
         self._embedder = None
+        self.norm = load_norm()
+        if self.norm is not None and self.norm.get("meta_version") != self.meta.version:
+            # raw scores shift with the meta model, so a norm built on another one would mis-grade
+            log.warning("aggregate norm was built on %s, meta is %s: normalization off until the backfill reruns",
+                        self.norm.get("meta_version"), self.meta.version)
+            self.norm = None
 
     def embed(self, texts: list[str]) -> np.ndarray:
         if self._embedder is None:
@@ -49,14 +55,19 @@ class Engine:
 
     @property
     def model_version(self) -> str:
-        return f"{__version__}/{self.meta.version}" + ("+gemini" if self.llm else "")
+        v = f"{__version__}/{self.meta.version}" + ("+gemini" if self.llm else "")
+        if self.norm is not None:
+            v += f"+norm{self.norm.get('version', '?')}"
+        return v
 
-    def analyze(self, ticker: str, days: int = config.LOOKBACK_DAYS,
-                only: list[str] | None = None) -> tuple[TickerSnapshot, list[ScoredItem]]:
+    def analyze(self, ticker: str, days: int = config.LOOKBACK_DAYS, only: list[str] | None = None,
+                history: dict[str, list[float]] | None = None,
+                as_of: datetime | None = None) -> tuple[TickerSnapshot, list[ScoredItem]]:
+        """history: the ticker's previous-day snapshot log (sentiment.snapshots.history), read at the same as_of."""
         company = get_company(ticker, self.http)
         if company is None:
             raise ValueError(f"unknown US ticker: {ticker}")
-        as_of = datetime.now(timezone.utc)
+        as_of = as_of or datetime.now(timezone.utc)
         raw, ok, failed = collect(company, self.http, as_of - timedelta(days=days), only=only)
         items = self._score(company, raw)
         try:
@@ -64,7 +75,7 @@ class Engine:
         except Exception as e:   # context is optional decoration
             log.warning("context failed for %s: %s", ticker, e)
             context = {}
-        s = summarize(items, as_of, context)
+        s = summarize(items, as_of, context, history=history, norm=self.norm)
         return TickerSnapshot(
             ticker=company.ticker, company=company.short_name, as_of=as_of,
             composite=s["composite"], channels=s["channels"], attention_z=s["attention_z"],
