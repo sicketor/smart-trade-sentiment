@@ -136,6 +136,7 @@ def test_prompt_ab_parse_versions():
     import pytest
     from eval.prompt_ab import parse_versions
     assert parse_versions("2,3") == [2, 3] and parse_versions("3, 1") == [1, 3]
-    for bad in ("", "4", "a,2"):
+    assert parse_versions("") == []
+    for bad in ("4", "a,2"):
         with pytest.raises(SystemExit):
             parse_versions(bad)

@@ -31,7 +31,7 @@ import numpy as np
 
 from sentiment import config
 from sentiment.meta import Meta, group_of, learned_probs
-from sentiment.types import CLASS_VALUES
+from sentiment.types import CLASS_VALUES, ModelOutput
 from train.io import bucket
 from train.meta_train import (GROUPS, MIN_TRAIN, featurize, fit_bundle, keys_for, load_labeled, matrix,
                               metrics, target_cls)
@@ -42,6 +42,8 @@ from .metrics import (bootstrap_ci, brier5, ece_eqmass, ece_floor, log_loss5, mc
 
 DEFAULT_MIN_BUCKET = 65
 STUDENT_GOLD = config.ROOT / "models" / "st-finsent" / "gold_ids.json"   # gold ids the student never saw
+STAGE2 = config.ROOT / "models" / "st-finsent" / "stage2.json"       # active student was fine-tuned on gold
+STUDENT_OOF = config.ROOT / "runs" / "student_gold_oof.json"
 MIN_ELIGIBLE = 60    # fewer eligible gold in a group -> meta_train keeps the bucket split for it
 HEURISTIC_DIR = config.ROOT / "no-such-dir"
 
@@ -57,6 +59,41 @@ def load_student_gold(path=None) -> set[str]:
         return set(json.loads(open(p, encoding="utf-8").read()))
     except (OSError, ValueError):
         return set()
+
+
+def load_student_oof(path) -> dict[tuple, tuple[float, float, float]]:
+    """runs/student_gold_oof.json (train.student_gold oof) -> {(id, ticker): s2 probs as (neg, neu, pos)}."""
+    d = json.loads(open(path, encoding="utf-8").read())
+    return {(i, t): (p[0] + p[1], p[2], p[3] + p[4]) for i, t, p in zip(d["ids"], d["tickers"], d["s2"])}
+
+
+def apply_student_oof(gold: list[dict], oof: dict) -> int:
+    """Replaces each gold example's st_finsent output by the stage-2 student that never saw it -> count."""
+    by_id = {i: p for (i, _), p in oof.items()}
+    n = 0
+    for e in gold:
+        p = oof.get((_id(e), e["item"].ticker)) or by_id.get(_id(e))
+        if p is None:
+            continue
+        e["outputs"] = [o for o in e["outputs"] if o.model != "st_finsent"] + [ModelOutput("st_finsent", p)]
+        n += 1
+    return n
+
+
+def prepare_student(gold: list[dict], oof_path=None, stage2=None) -> set[str] | None:
+    """A stage-2 student (train.student_gold final) trained on every gold id, so its own score on gold is
+    in-sample. When it is active (or oof_path is given), each gold item gets its out-of-fold score instead,
+    and every gold id becomes eligible: it is either swapped or newer than the student.
+    -> the student_gold set, or None when the active student is not stage-2 and no oof_path is given."""
+    if oof_path is None:
+        if not (STAGE2 if stage2 is None else stage2).exists():
+            return None
+        oof_path = STUDENT_OOF
+        if not oof_path.exists():
+            raise SystemExit(f"stage-2 student active but {oof_path} is missing: run python -m train.student_gold oof")
+    n = apply_student_oof(gold, load_student_oof(oof_path))
+    print(f"stage-2 student: out-of-fold scores on {n}/{len(gold)} gold items")
+    return {_id(e) for e in gold}
 
 
 def split_gold(gold: list[dict], min_bucket: int, student_gold=frozenset()) -> tuple[list[dict], list[dict]]:
@@ -230,16 +267,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--folds", type=int, default=5)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--no-student-gold", action="store_true", help="ignore models/st-finsent/gold_ids.json")
+    ap.add_argument("--student-oof", help="score gold with this out-of-fold stage-2 student file "
+                                          "(default when the active student is stage-2: runs/student_gold_oof.json)")
     a = ap.parse_args(argv)
     labeled = load_labeled()
     if not any(e["origin"] == "gold" for e in labeled):
         print("no gold items: label with python -m labeling.server")
         return 2
     featurize(labeled, a.device)
+    s2_gold = prepare_student([e for e in labeled if e["origin"] == "gold"], a.student_oof)
+    student_gold = set() if a.no_student_gold else s2_gold if s2_gold is not None else load_student_gold()
     by_group = {g: [e for e in labeled if e["origin"] == "gold" and group_of(e["item"].channel) == g] for g in GROUPS}
     teacher = [e for e in labeled if e["origin"] == "teacher"]
     res = public(crossfit({g: v for g, v in by_group.items() if v}, teacher, a.folds, min_bucket=a.min_bucket,
-                           student_gold=set() if a.no_student_gold else load_student_gold()))
+                           student_gold=student_gold))
     out = config.ROOT / "runs" / "crossfit.json"
     out.parent.mkdir(exist_ok=True)
     out.write_text(json.dumps(res, indent=2), encoding="utf-8")

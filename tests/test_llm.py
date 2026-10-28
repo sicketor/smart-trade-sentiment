@@ -108,3 +108,88 @@ def test_missing_key(monkeypatch):
     lab = GeminiLabeler()
     assert lab.available is False
     assert lab.label(CO, [item(1)]) == {}
+
+
+# ---- OpenAICompatLabeler (DeepSeek / Groq) ----
+from sentiment.llm import OpenAICompatLabeler
+
+
+def chat(status, content=None):
+    body = {} if content is None else {"choices": [{"message": {"content": content}}]}
+    return httpx.Response(status, json=body, request=httpx.Request("POST", "http://x"))
+
+
+def test_compat_labels_and_headers(monkeypatch):
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "DSKEY")
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    sent = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        sent.append((url, headers, json))
+        return chat(200, __import__("json").dumps({"labels": [good(1), good(2)]}))
+    monkeypatch.setattr(llm.httpx, "post", post)
+    lab = OpenAICompatLabeler("deepseek")
+    out = lab.label(CO, [item(1), item(2)])
+    assert set(out) == {"id1", "id2"} and lab.name == "deepseek"
+    url, headers, body = sent[0]
+    assert url == "https://api.deepseek.com/chat/completions"
+    assert headers == {"Authorization": "Bearer DSKEY"}
+    assert body["model"] == "deepseek-chat" and body["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.parametrize("content", ['```json\n[{"id":"id1","cls":1,"stance":"none","event":"OTHER","relevant":true,"reason":"r"}]\n```',
+                                     '[{"id":"id1","cls":1,"stance":"none","event":"OTHER","relevant":true,"reason":"r"}]',
+                                     '{"x":[{"id":"id1","cls":1,"stance":"none","event":"OTHER","relevant":true,"reason":"r"}]}'])
+def test_compat_content_shapes(monkeypatch, content):
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: chat(200, content))
+    assert list(OpenAICompatLabeler("groq", api_key="K").label(CO, [item(1)])) == ["id1"]
+
+
+def test_compat_unparsable(monkeypatch):
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: chat(200, "not json"))
+    lab = OpenAICompatLabeler("groq", api_key="K")
+    assert lab.label(CO, [item(1)]) == {} and not lab.exhausted
+
+
+@pytest.mark.parametrize("code", [401, 402, 403])
+def test_compat_auth_exhausts(monkeypatch, code):
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: chat(code))
+    lab = OpenAICompatLabeler("deepseek", api_key="K")
+    assert lab.label(CO, [item(1)]) == {} and lab.exhausted
+
+
+def test_compat_three_429_exhausts(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr(llm, "_sleep", sleeps.append)
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: chat(429))
+    lab = OpenAICompatLabeler("groq", api_key="K")
+    assert lab.label(CO, [item(1)]) == {} and lab.exhausted and sleeps == [2, 8]
+
+
+def test_compat_retry_then_ok_and_other_4xx(monkeypatch):
+    monkeypatch.setattr(llm, "_sleep", lambda s: None)
+    seq = iter([chat(500), chat(200, '{"labels":[]}')])
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: next(seq))
+    lab = OpenAICompatLabeler("groq", api_key="K")
+    assert lab._call("p") == [] and not lab.exhausted
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: chat(400))
+    assert lab._call("p") is None and not lab.exhausted
+
+
+def test_compat_key_not_gemini(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY", "g")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "")
+    assert OpenAICompatLabeler("deepseek").available is False
+
+
+def test_compat_unknown_provider():
+    with pytest.raises(ValueError):
+        OpenAICompatLabeler("nope")
+
+
+def test_prompt_ab_providers_parsing():
+    from eval.prompt_ab import parse_providers, parse_versions
+    assert parse_providers("") == [] and parse_providers("groq, deepseek") == ["groq", "deepseek"]
+    with pytest.raises(SystemExit):
+        parse_providers("groq,bogus")
+    assert parse_versions("") == []

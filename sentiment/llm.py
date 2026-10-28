@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 
 import httpx
 
@@ -193,3 +194,77 @@ class GeminiLabeler:
                             r["relevant"] = True
                     out[o["id"]] = r
         return out
+
+
+_sleep = time.sleep
+_SUFFIX = ('\n\nReturn ONLY a JSON object of the form {"labels": [ ... ]} where each element has the fields '
+           'id, cls, stance, event, relevant, reason (the item format above).')
+
+
+class OpenAICompatLabeler(GeminiLabeler):
+    """Same prompt and validation as GeminiLabeler, over an OpenAI-compatible chat API (DeepSeek, Groq)."""
+
+    def __init__(self, provider: str, api_key: str | None = None, prompt_version: int = PROMPT_VERSION,
+                 model: str | None = None):
+        cfg = config.LLM_PROVIDERS.get(provider)
+        if cfg is None:
+            raise ValueError(f"unknown provider: {provider!r}")
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(config.ROOT / ".env")
+        except ImportError:
+            pass
+        key = api_key or os.environ.get(cfg["key_env"]) or ""
+        super().__init__(api_key=key, prompt_version=prompt_version)
+        self._key = key  # never fall back to GEMINI_API_KEY
+        self._base, self._model = cfg["base"], model or cfg["model"]
+        self.name = provider
+
+    def _call(self, prompt: str, schema: dict | None = None) -> list | None:
+        body = {"model": self._model, "temperature": 0, "response_format": {"type": "json_object"},
+                "messages": [{"role": "user", "content": prompt + _SUFFIX}]}
+        n429 = 0
+        for attempt in range(3):
+            try:
+                r = httpx.post(f"{self._base}/chat/completions",
+                               headers={"Authorization": f"Bearer {self._key}"}, json=body, timeout=120)
+            except httpx.HTTPError as e:
+                log.warning("%s request failed: %s", self.name, type(e).__name__)
+            else:
+                code = r.status_code
+                if code in (401, 402, 403):
+                    log.warning("%s returned HTTP %s", self.name, code)
+                    self.exhausted = True
+                    return None
+                if code == 429:
+                    n429 += 1
+                elif code >= 500:
+                    log.warning("%s returned HTTP %s", self.name, code)
+                elif code != 200:
+                    log.warning("%s returned HTTP %s", self.name, code)
+                    return None
+                else:
+                    return self._parse(r)
+            if attempt < 2:
+                _sleep((2, 8)[attempt])
+        if n429 == 3:
+            self.exhausted = True
+        return None
+
+    def _parse(self, r) -> list | None:
+        try:
+            content = r.json()["choices"][0]["message"]["content"].strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[1] if "\n" in content else ""
+                content = content.rsplit("```", 1)[0]
+            data = json.loads(content)
+        except (KeyError, IndexError, ValueError, TypeError, AttributeError):
+            log.warning("%s returned an unparsable body", self.name)
+            return None
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            if isinstance(data.get("labels"), list):
+                return data["labels"]
+            return next((v for v in data.values() if isinstance(v, list)), None)
+        return None

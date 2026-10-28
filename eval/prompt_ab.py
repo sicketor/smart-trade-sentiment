@@ -82,9 +82,17 @@ def parse_versions(s: str) -> list[int]:
         vs = sorted({int(x) for x in s.split(",") if x.strip()})
     except ValueError:
         raise SystemExit(f"--versions: not a comma list of ints: {s!r}")
-    if not vs or not set(vs) <= {1, 2, 3}:
+    if not set(vs) <= {1, 2, 3}:
         raise SystemExit("--versions: choose from 1,2,3")
     return vs
+
+
+def parse_providers(s: str) -> list[str]:
+    ps = [x.strip() for x in s.split(",") if x.strip()]
+    bad = [p for p in ps if p not in config.LLM_PROVIDERS]
+    if bad:
+        raise SystemExit(f"--providers: unknown {bad}; choose from {sorted(config.LLM_PROVIDERS)}")
+    return list(dict.fromkeys(ps))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -93,9 +101,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--min-interval", type=float, default=4.5)
     ap.add_argument("--versions", default="2,3")
     ap.add_argument("--fresh-v1", action="store_true")
+    ap.add_argument("--providers", default="", help="comma list of " + ",".join(config.LLM_PROVIDERS))
     a = ap.parse_args(argv)
     versions = parse_versions(a.versions)
-    from sentiment.llm import FEWSHOT, GeminiLabeler
+    providers = parse_providers(a.providers)
+    from sentiment.llm import FEWSHOT, GeminiLabeler, OpenAICompatLabeler
     exs = load(a.min_bucket)
     if FEWSHOT.exists():
         shot_ids = {e["id"] for e in json.loads(FEWSHOT.read_text(encoding="utf-8"))}
@@ -111,20 +121,32 @@ def main(argv: list[str] | None = None) -> int:
         for e in exs:
             if e["key"] in teacher:
                 cache["v1"].setdefault(e["key"], teacher[e["key"]])
+    CACHE.parent.mkdir(exist_ok=True)
     for pv in versions:
         lab = GeminiLabeler(prompt_version=pv)
         if not lab.available:
             print("GEMINI_API_KEY missing")
             return 2
         cache[f"v{pv}"] = run_labeler(lab, exs, cache[f"v{pv}"], a.min_interval)
-        CACHE.parent.mkdir(exist_ok=True)
         CACHE.write_text(json.dumps(cache), encoding="utf-8")
-    both = set.intersection(*(set(cache[f"v{pv}"]) for pv in versions))
-    res = {f"v{pv}": report([e for e in exs if e["key"] in both], cache[f"v{pv}"]) for pv in versions}
+    for p in providers:
+        lab = OpenAICompatLabeler(p, prompt_version=2)
+        if not lab.available:
+            print(f"{config.LLM_PROVIDERS[p]['key_env']} missing")
+            continue
+        cache[p] = run_labeler(lab, exs, cache.setdefault(p, {}), a.min_interval)
+        CACHE.write_text(json.dumps(cache), encoding="utf-8")
+    names = [f"v{pv}" for pv in versions] + [p for p in providers if cache.get(p)]
+    if not names:
+        print("nothing to report")
+        return 0
+    both = set.intersection(*(set(cache.get(n, {})) for n in names))
+    print(f"n_common={len(both)}")
+    res = {n: report([e for e in exs if e["key"] in both], cache[n]) for n in names}
     (config.ROOT / "runs" / "prompt_ab_report.json").write_text(json.dumps(res, indent=2), encoding="utf-8")
-    for pv, rows in res.items():
+    for n, rows in res.items():
         for name, r in rows.items():
-            print(f"{pv} {name:7}", "  ".join(f"{k}={v}" for k, v in r.items()))
+            print(f"{n} {name:7}", "  ".join(f"{k}={v}" for k, v in r.items()))
     return 0
 
 

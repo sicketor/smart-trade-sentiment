@@ -268,7 +268,7 @@ def forced_groups(value: str | None) -> set[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from eval.crossfit import DEFAULT_MIN_BUCKET, crossfit
+    from eval.crossfit import DEFAULT_MIN_BUCKET, crossfit, load_student_gold, prepare_student
 
     p = argparse.ArgumentParser(prog="train.meta_train")
     p.add_argument("--force", nargs="?", const="all", default=None, choices=(*GROUPS, "all"),
@@ -277,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="gold buckets >= this are cross-fit eligible; lower ones always train")
     p.add_argument("--folds", type=int, default=5)
     p.add_argument("--device", default="auto")
+    p.add_argument("--student-oof", help="out-of-fold stage-2 student scores for gold "
+                                         "(default when the active student is stage-2: runs/student_gold_oof.json)")
     args = p.parse_args(argv)
     forced = forced_groups(args.force)
     labeled = load_labeled()
@@ -284,12 +286,16 @@ def main(argv: list[str] | None = None) -> int:
         print("no labeled items: run train.corpus, then train.teacher and/or labeling.server")
         return 2
     featurize(labeled, args.device)
+    # a stage-2 student saw every gold id: gold rows train and test on its out-of-fold scores instead
+    s2_gold = prepare_student([e for e in labeled if e["origin"] == "gold"], args.student_oof)
+    student_gold = s2_gold if s2_gold is not None else load_student_gold()
     report = []
     for group in GROUPS:
         exs = [e for e in labeled if group_of(e["item"].channel) == group]
         gold = [e for e in exs if e["origin"] == "gold"]
         teacher = [e for e in exs if e["origin"] == "teacher"]
-        cv = crossfit({group: gold}, teacher, args.folds, min_bucket=args.min_bucket)[group]
+        cv = crossfit({group: gold}, teacher, args.folds, min_bucket=args.min_bucket,
+                      student_gold=student_gold)[group]
         report.append(train_group(group, exs, group in forced, cv))
     out = config.ROOT / "runs" / "meta_report.json"
     out.parent.mkdir(exist_ok=True)

@@ -60,4 +60,9 @@ DEDUP_COSINE = 0.80         # MiniLM same-event threshold
 # Gemini (SPEC §5.0): free tier, used only when GEMINI_API_KEY is set.
 GEMINI_MODELS = ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
 GEMINI_BATCH = 25
+# OpenAI-compatible chat providers for the teacher prompt (sentiment.llm.OpenAICompatLabeler)
+LLM_PROVIDERS = {
+    "deepseek": {"base": "https://api.deepseek.com", "model": "deepseek-chat", "key_env": "DEEPSEEK_API_KEY"},
+    "groq": {"base": "https://api.groq.com/openai/v1", "model": "openai/gpt-oss-120b", "key_env": "GROQ_API_KEY"},
+}
 GEMINI_MAX_ITEMS_PER_TICKER = 40

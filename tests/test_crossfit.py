@@ -104,6 +104,7 @@ def test_student_gold_makes_low_bucket_eligible(tmp_path, monkeypatch):
     assert CF.load_student_gold(tmp_path / "nope.json") == set()
     seen = []
     monkeypatch.setattr(CF, "STUDENT_GOLD", f)
+    monkeypatch.setattr(CF, "STAGE2", tmp_path / "no-stage2.json")   # the real models/ may hold a stage-2 student
     monkeypatch.setattr(CF, "load_labeled", lambda: gold)
     monkeypatch.setattr(CF, "featurize", lambda labeled, device: None)
     monkeypatch.setattr(CF, "crossfit", lambda by_group, teacher, folds, **kw: seen.append(kw["student_gold"]) or {})
@@ -111,3 +112,34 @@ def test_student_gold_makes_low_bucket_eligible(tmp_path, monkeypatch):
     CF.main([])
     CF.main(["--no-student-gold"])
     assert seen == [{low}, set()]
+
+
+def test_apply_student_oof_replaces_only_st_finsent(tmp_path):
+    exs = make("g", 3, "gold")
+    exs[0]["outputs"].append(ModelOutput("st_finsent", (1.0, 0.0, 0.0)))
+    p = tmp_path / "oof.json"
+    p.write_text(json.dumps({"ids": ["g0", "g1"], "tickers": ["X", "OTHER"],
+                             "s2": [[0, 0, 0.2, 0.3, 0.5], [0.1, 0.1, 0.8, 0, 0]]}), encoding="utf-8")
+    n = CF.apply_student_oof(exs, CF.load_student_oof(p))
+    assert n == 2   # g1 matches on id when the ticker differs; g2 has no OOF row
+    st = [o for o in exs[0]["outputs"] if o.model == "st_finsent"]
+    assert len(st) == 1 and np.allclose(st[0].probs, (0.0, 0.2, 0.8))
+    assert len(exs[0]["outputs"]) == 4
+    assert np.allclose([o for o in exs[1]["outputs"] if o.model == "st_finsent"][0].probs, (0.2, 0.8, 0.0))
+    assert not any(o.model == "st_finsent" for o in exs[2]["outputs"])
+
+
+def test_prepare_student_only_for_stage2(tmp_path, monkeypatch):
+    import pytest
+    exs = make("g", 3, "gold")
+    assert CF.prepare_student(exs, None, stage2=tmp_path / "none.json") is None
+    s2 = tmp_path / "stage2.json"
+    s2.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(CF, "STUDENT_OOF", tmp_path / "missing.json")
+    with pytest.raises(SystemExit):
+        CF.prepare_student(exs, None, stage2=s2)
+    oof = tmp_path / "oof.json"
+    oof.write_text(json.dumps({"ids": ["g0"], "tickers": ["X"], "s2": [[0, 0, 1, 0, 0]]}), encoding="utf-8")
+    monkeypatch.setattr(CF, "STUDENT_OOF", oof)
+    assert CF.prepare_student(exs, None, stage2=s2) == {"g0", "g1", "g2"}   # g1, g2 are newer than the student
+    assert [o for o in exs[0]["outputs"] if o.model == "st_finsent"][0].probs == (0, 1, 0)
