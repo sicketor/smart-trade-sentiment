@@ -1,6 +1,10 @@
 """Label corpus items with Gemini (the teacher), resumable and quota-aware (SPEC §5.0).
 
 python -m train.teacher [--max-items 5000] [--min-interval 4.5] [--channels news,filings,social] [--relabel-old]
+python -m train.teacher --provider deepseek [--max-items 2000]
+
+--provider (config.LLM_PROVIDERS) runs a second labeler into data/teacher/labels_<provider>.jsonl, only on the
+items Gemini labeled for the student (bucket < META_RESERVED), so train.build_dataset can weight agreement.
 
 Rows carry the prompt version `pv`; readers keep the highest one (train.io.latest_teacher). With --relabel-old,
 items labeled only by an older prompt are queued again after the never-labeled ones.
@@ -17,7 +21,7 @@ from pathlib import Path
 
 from sentiment import config
 
-from .io import CORPUS, TEACHER, append_jsonl, company_from_json, item_from_json, latest_teacher, read_jsonl
+from .io import CORPUS, META_RESERVED, TEACHER, append_jsonl, bucket, company_from_json, item_from_json, latest_teacher, read_jsonl
 
 
 def pending(corpus_rows, labeled_ids, channels=("news", "filings", "social"),
@@ -98,7 +102,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--min-interval", type=float, default=4.5)
     ap.add_argument("--channels", default="news,filings,social")
     ap.add_argument("--relabel-old", action="store_true")
+    ap.add_argument("--provider", choices=sorted(config.LLM_PROVIDERS), help="second labeler (see module doc)")
     a = ap.parse_args(argv)
+    if a.provider:
+        return second_labeler(a)
     from sentiment.llm import GeminiLabeler
     labeler = GeminiLabeler()
     if not labeler.available:
@@ -125,6 +132,44 @@ def main(argv: list[str] | None = None) -> int:
             old = labeled - current
             print(f"relabeling up to {left} of {len(old)} items from older prompts")
             run(labeler, read_jsonl(CORPUS), set(), left, a.min_interval, channels, only=old)
+    finally:
+        lock.unlink(missing_ok=True)
+    return 0
+
+
+def second_path(provider: str) -> Path:
+    return Path(TEACHER).with_name(f"labels_{provider}.jsonl")
+
+
+def second_targets(teacher_rows) -> set[str]:
+    """Ids the student trains on: the latest Gemini label exists and bucket < META_RESERVED."""
+    return {r["id"] for r in latest_teacher(teacher_rows) if bucket(r["id"]) < META_RESERVED}
+
+
+def second_labeler(a) -> int:
+    from sentiment.llm import OpenAICompatLabeler
+    labeler = OpenAICompatLabeler(a.provider)
+    if not labeler.available:
+        print(f"{config.LLM_PROVIDERS[a.provider]['key_env']} missing")
+        return 2
+    out = second_path(a.provider)
+    lock = out.with_suffix(".lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+    except FileExistsError:
+        print(f"another {a.provider} run is active (delete {lock} if it crashed)")
+        return 3
+    try:
+        os.write(fd, str(os.getpid()).encode())
+        os.close(fd)
+        done = {r["id"] for r in read_jsonl(out)} if out.exists() else set()
+        targets = second_targets(read_jsonl(TEACHER))
+        channels = tuple(c.strip() for c in a.channels.split(",") if c.strip())
+        print(f"{a.provider}: {len(targets - done)} of {len(targets)} student items left", flush=True)
+        run(labeler, read_jsonl(CORPUS), done, a.max_items, min(a.min_interval, 0.5), channels, out_path=out,
+            only=targets)
+        print(f"tokens: in {labeler.usage['in']:,} out {labeler.usage['out']:,}")
     finally:
         lock.unlink(missing_ok=True)
     return 0

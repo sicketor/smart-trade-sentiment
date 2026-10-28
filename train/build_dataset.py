@@ -46,6 +46,26 @@ def map3(label3: int) -> list[float]:
 
 
 MIN_TEACHER_VAL = 300
+# second labeler (train.teacher --provider): weight of a teacher row by how its two labels relate
+AGREE_WEIGHT = {"same": 1.0, "near": 1.0, "neutral": 0.6, "opposite": 0.3}
+
+
+def agreement(a: int, b: int) -> str:
+    """Two 5-class labels -> same | near (same direction, other strength) | neutral (one is 0) | opposite."""
+    if a == b:
+        return "same"
+    if a * b > 0:
+        return "near"
+    return "neutral" if a == 0 or b == 0 else "opposite"
+
+
+def second_soft(a: int, b: int | None) -> tuple[list[float], float, str]:
+    """Gemini label a, second label b (None = none) -> (soft label = mean of both smooth5, weight, relation)."""
+    if b is None:
+        return smooth5(a), 1.0, "none"
+    rel = agreement(a, b)
+    soft = [(x + y) / 2 for x, y in zip(smooth5(a), smooth5(b))]
+    return soft, AGREE_WEIGHT[rel], rel
 
 
 def norm_text(s: str) -> str:
@@ -68,7 +88,9 @@ WEAK_PATH = ROOT / "data" / "weak" / "stocktwits_train.jsonl"
 
 
 def build(out: str | Path = "data/train", max_stocktwits: int = 20000, public_weight: float = 0.5,
-          weak_path: str | Path = WEAK_PATH, weak_weight: float = 0.3) -> dict:
+          weak_path: str | Path = WEAK_PATH, weak_weight: float = 0.3, second: str | Path | None = None) -> dict:
+    """second: a second labeler's file (data/teacher/labels_<provider>.jsonl) -> teacher rows get
+    second_soft's soft label and weight."""
     out = Path(out)
     if not out.is_absolute():
         out = ROOT / out
@@ -82,6 +104,13 @@ def build(out: str | Path = "data/train", max_stocktwits: int = 20000, public_we
 
     stats = {"rows": Counter(), "class_mass": [0.0] * 5, "dropped_leakage": 0, "dropped_gold": 0,
              "reserved_for_meta": 0}
+    second_by_key, second_by_id = {}, {}
+    if second is not None:
+        stats["agreement"] = Counter()
+        for r in tio.read_jsonl(second):   # later rows win
+            c = int(r["cls"]) if r.get("relevant", True) else 0
+            second_by_key[(r["id"], r.get("ticker"))] = c
+            second_by_id[r["id"]] = c
 
     # corpus: first row per (id, ticker) and per id, skipping gold
     corpus: dict = {}      # (id, ticker) -> (item, company)
@@ -133,7 +162,12 @@ def build(out: str | Path = "data/train", max_stocktwits: int = 20000, public_we
             ticker = t.get("ticker") or item.ticker
             company = companies.get(ticker) or pair[1]
             cls = int(t["cls"]) if t.get("relevant", True) else 0
-            add(corpus_target(ticker, company), item_text(item), smooth5(cls), 1.0, "teacher", t["id"],
+            soft, w = smooth5(cls), 1.0
+            if second is not None:
+                b = second_by_key.get((t["id"], t.get("ticker")), second_by_id.get(t["id"]))
+                soft, w, rel = second_soft(cls, b)
+                stats["agreement"][rel] += 1
+            add(corpus_target(ticker, company), item_text(item), soft, w, "teacher", t["id"],
                 title=item.title)
 
     # public
@@ -193,6 +227,8 @@ def build(out: str | Path = "data/train", max_stocktwits: int = 20000, public_we
         for k, p in enumerate(r["soft"]):
             stats["class_mass"][k] += p * r["weight"]
     stats["rows"] = dict(stats["rows"])
+    if "agreement" in stats:
+        stats["agreement"] = dict(stats["agreement"])
     stats["n_train"] = len(train)
     stats["n_val"] = len(val)
     stats["class_mass"] = [round(x, 2) for x in stats["class_mass"]]
@@ -207,8 +243,9 @@ def main() -> None:
     ap.add_argument("--public-weight", type=float, default=0.5)
     ap.add_argument("--weak-path", default=str(WEAK_PATH))
     ap.add_argument("--weak-weight", type=float, default=0.3)
+    ap.add_argument("--second", help="second labeler file, e.g. data/teacher/labels_deepseek.jsonl")
     a = ap.parse_args()
-    build(a.out, a.max_stocktwits, a.public_weight, a.weak_path, a.weak_weight)
+    build(a.out, a.max_stocktwits, a.public_weight, a.weak_path, a.weak_weight, a.second)
 
 
 if __name__ == "__main__":

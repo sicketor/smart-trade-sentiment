@@ -219,6 +219,7 @@ class OpenAICompatLabeler(GeminiLabeler):
         self._key = key  # never fall back to GEMINI_API_KEY
         self._base, self._model = cfg["base"], model or cfg["model"]
         self.name = provider
+        self.usage = {"in": 0, "out": 0}   # tokens billed so far (the API's "usage" field)
 
     def _call(self, prompt: str, schema: dict | None = None) -> list | None:
         body = {"model": self._model, "temperature": 0, "response_format": {"type": "json_object"},
@@ -252,6 +253,12 @@ class OpenAICompatLabeler(GeminiLabeler):
         return None
 
     def _parse(self, r) -> list | None:
+        try:
+            u = r.json().get("usage") or {}
+            self.usage["in"] += int(u.get("prompt_tokens", 0))
+            self.usage["out"] += int(u.get("completion_tokens", 0))
+        except (ValueError, TypeError, AttributeError):
+            pass
         try:
             content = r.json()["choices"][0]["message"]["content"].strip()
             if content.startswith("```"):

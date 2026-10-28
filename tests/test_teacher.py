@@ -103,3 +103,13 @@ def test_row_carries_about_only_when_present(tmp_path, monkeypatch):
                 min_interval=0, out_path=out)
     by = {r["id"]: r for r in read_jsonl(out)}
     assert by["a0"]["about"] == "mention" and "about" not in by["a1"]
+
+
+def test_second_targets_student_buckets_only():
+    from train import teacher as T
+    from train.io import META_RESERVED, bucket
+    ids = [f"x{i}" for i in range(60)]
+    rows = [{"id": i, "ticker": "A", "cls": 1, "pv": 2} for i in ids]
+    got = T.second_targets(rows)
+    assert got == {i for i in ids if bucket(i) < META_RESERVED} and got
+    assert T.second_path("deepseek").name == "labels_deepseek.jsonl"

@@ -220,3 +220,31 @@ def test_build_multi_ticker_teacher_company(monkeypatch, tmp_path):
     bd.build(tmp_path / "o", weak_path=tmp_path / "none.jsonl")
     got = {r["target"] for r in _read(tmp_path / "o" / "train.jsonl")}
     assert got == {"NVDA | Nvidia", "AMD | AMD Inc"}
+
+
+def test_agreement_relations():
+    assert [bd.agreement(a, b) for a, b in ((1, 1), (1, 2), (-2, -1), (0, 1), (-1, 0), (1, -1), (2, -2))] == \
+        ["same", "near", "near", "neutral", "neutral", "opposite", "opposite"]
+    soft, w, rel = bd.second_soft(2, None)
+    assert soft == bd.smooth5(2) and w == 1.0 and rel == "none"
+    soft, w, rel = bd.second_soft(1, -1)
+    assert rel == "opposite" and w == bd.AGREE_WEIGHT["opposite"]
+    assert soft == pytest.approx([(x + y) / 2 for x, y in zip(bd.smooth5(1), bd.smooth5(-1))])
+    assert sum(soft) == pytest.approx(1.0)
+
+
+def test_build_second_labeler_weights_teacher_rows(monkeypatch, tmp_path):
+    corpus = [_crow("a", "A up"), _crow("b", "B down"), _crow("c", "C flat")]
+    teacher = [{"id": i, "ticker": "NVDA", "cls": c, "relevant": True} for i, c in (("a", 2), ("b", -1), ("c", 0))]
+    _setup(monkeypatch, tmp_path, corpus, teacher, [], {}, [])
+    sec = tmp_path / "second.jsonl"
+    sec.write_text("\n".join(json.dumps(r) for r in (
+        {"id": "a", "ticker": "NVDA", "cls": 2, "relevant": True},
+        {"id": "b", "ticker": "OTHER", "cls": 1, "relevant": True},     # id fallback, opposite
+    )), encoding="utf-8")
+    stats = bd.build(tmp_path / "out", weak_path=tmp_path / "none.jsonl", second=sec)
+    rows = {r["id"]: r for r in _read(tmp_path / "out" / "train.jsonl") if r["source"] == "teacher"}
+    assert rows["a"]["weight"] == 1.0 and rows["a"]["soft"] == bd.smooth5(2)
+    assert rows["b"]["weight"] == bd.AGREE_WEIGHT["opposite"]
+    assert rows["c"]["weight"] == 1.0 and rows["c"]["soft"] == bd.smooth5(0)   # no second label
+    assert stats["agreement"] == {"same": 1, "opposite": 1, "none": 1}
