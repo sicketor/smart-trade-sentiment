@@ -110,6 +110,34 @@ def cmd_score(args) -> int:
     return 0
 
 
+def scored_by_ticker(rows: list[dict] | None = None, cache: dict | None = None,
+                     meta=None) -> dict[str, list[tuple[ScoredItem, datetime, datetime]]]:
+    """{ticker: [(ScoredItem, published_at UTC, collected_at UTC)]} rebuilt from the score cache and the corpus
+    rows (meta predicted on CPU from the cached model outputs). Defaults load the cache, corpus and Meta();
+    corpus rows without a cached score are left out."""
+    if cache is None:
+        cache = {(r["id"], r["ticker"]): r for r in read_jsonl(CACHE)}
+    if rows is None:
+        rows = [r for r in corpus_rows() if _key(r) in cache]
+    if meta is None:
+        from sentiment.meta import Meta
+        meta = Meta()
+    scored: dict[str, list[tuple[ScoredItem, datetime, datetime]]] = defaultdict(list)
+    for r in rows:
+        c = cache.get(_key(r))
+        if c is None:
+            continue
+        item = item_from_json(r["item"])
+        outputs = [ModelOutput(m, tuple(p)) for m, p in c["outputs"].items()]
+        m = meta.predict(item.channel, outputs, c["features"], c["events"], None)
+        si = ScoredItem(item=item, relevance=r["relevance"], cluster_id=r["cluster_id"], novelty=r["novelty"],
+                        outputs=outputs, features=c["features"], events=c["events"], probs5=m.probs5,
+                        score=m.score, cls=m.cls, confidence=m.confidence, stance=m.stance, llm=None,
+                        drivers=c.get("drivers", []))
+        scored[item.ticker].append((si, _aware(item.published_at), _utc(r["collected_at"])))
+    return scored
+
+
 def cmd_build(args) -> int:
     from sentiment.aggregate import summarize
     from sentiment.meta import Meta
@@ -119,17 +147,7 @@ def cmd_build(args) -> int:
         return 1
     rows = [r for r in corpus_rows() if _key(r) in cache]
     meta = Meta()
-    scored: dict[str, list[tuple[ScoredItem, datetime, datetime]]] = defaultdict(list)
-    for r in rows:
-        c = cache[_key(r)]
-        item = item_from_json(r["item"])
-        outputs = [ModelOutput(m, tuple(p)) for m, p in c["outputs"].items()]
-        m = meta.predict(item.channel, outputs, c["features"], c["events"], None)
-        si = ScoredItem(item=item, relevance=r["relevance"], cluster_id=r["cluster_id"], novelty=r["novelty"],
-                        outputs=outputs, features=c["features"], events=c["events"], probs5=m.probs5,
-                        score=m.score, cls=m.cls, confidence=m.confidence, stance=m.stance, llm=None,
-                        drivers=c.get("drivers", []))
-        scored[item.ticker].append((si, _aware(item.published_at), _utc(r["collected_at"])))
+    scored = scored_by_ticker(rows, cache, meta)
     records = []
     for ticker, as_ofs in ticker_days(rows).items():
         for as_of in as_ofs:

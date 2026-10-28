@@ -18,3 +18,4 @@ reports/
 sentiment/fewshot_pool.json
 data/snapshots/
 data/backfill/
+data/market/
