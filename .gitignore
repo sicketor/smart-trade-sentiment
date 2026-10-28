@@ -3,7 +3,7 @@
 __pycache__/
 *.pyc
 .cache/
-models/
+/models/
 data/cache/
 data/teacher/
 runs/

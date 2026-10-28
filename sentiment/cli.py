@@ -1,4 +1,5 @@
-"""python -m sentiment analyze NVDA AMD [--no-llm] [--days 7] [--sources a,b] [--items] [--out f.json]"""
+"""python -m sentiment analyze NVDA AMD [--tickers-file f.txt] [--shard i/n] [--no-llm] [--days 7]
+[--sources a,b] [--items] [--out f.json]"""
 from __future__ import annotations
 
 import argparse
@@ -11,11 +12,44 @@ from datetime import datetime, timezone
 from . import config
 
 
+def read_tickers_file(path: str) -> list[str]:
+    """One ticker per line; blank lines and # comments (whole-line or trailing) are skipped."""
+    out = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            t = line.split("#", 1)[0].strip()
+            if t:
+                out.append(t)
+    return out
+
+
+def parse_shard(spec: str) -> tuple[int, int]:
+    """'i/n' (1-based) -> (i, n); ValueError when malformed or out of range."""
+    i, sep, n = spec.partition("/")
+    if not sep:
+        raise ValueError(f"shard must look like i/n, got {spec!r}")
+    i_, n_ = int(i), int(n)
+    if n_ < 1 or not 1 <= i_ <= n_:
+        raise ValueError(f"shard needs 1 <= i <= n, got {spec!r}")
+    return i_, n_
+
+
+def select_shard(tickers: list[str], i: int, n: int) -> list[str]:
+    """Tickers at sorted-unique positions idx where idx % n == i - 1."""
+    return [t for idx, t in enumerate(sorted(set(tickers))) if idx % n == i - 1]
+
+
+def _unique(tickers: list[str]) -> list[str]:
+    return list(dict.fromkeys(tickers))
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="sentiment")
     sub = p.add_subparsers(dest="cmd", required=True)
-    a = sub.add_parser("analyze", help="analyze up to 5 US tickers, print JSON")
-    a.add_argument("tickers", nargs="+")
+    a = sub.add_parser("analyze", help="analyze US tickers (up to 5 positional, any number via --tickers-file)")
+    a.add_argument("tickers", nargs="*")
+    a.add_argument("--tickers-file", help="one ticker per line; # comments and blank lines skipped")
+    a.add_argument("--shard", help="i/n (1-based): keep sorted-unique tickers at idx %% n == i-1")
     a.add_argument("--no-llm", action="store_true", help="skip Gemini even when GEMINI_API_KEY is set")
     a.add_argument("--days", type=int, default=config.LOOKBACK_DAYS)
     a.add_argument("--sources", help="comma-separated adapter ids (default: all)")
@@ -25,13 +59,26 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--out", help="write JSON here instead of stdout")
     args = p.parse_args(argv)
 
+    try:
+        shard = parse_shard(args.shard) if args.shard else None
+        raw = list(args.tickers) + (read_tickers_file(args.tickers_file) if args.tickers_file else [])
+    except (ValueError, OSError) as e:
+        a.error(str(e))
+    tickers = _unique([t.strip().upper() for t in raw if t.strip()])
+    if not tickers:
+        a.error("at least one ticker is required (positional or --tickers-file)")
+    if shard is not None:
+        tickers = select_shard(tickers, *shard)
+    elif not args.tickers_file:
+        tickers = tickers[:5]
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr)
-    tickers = [t.upper() for t in args.tickers][:5]
+    if not tickers:  # an empty shard (n > universe) is not a failure
+        logging.warning("shard %s selects no tickers", args.shard)
     from .pipeline import Engine, snapshot_to_dict
 
     from .snapshots import history, record
 
-    engine = Engine(use_llm=not args.no_llm, device=args.device)
+    engine = Engine(use_llm=not args.no_llm, device=args.device) if tickers else None
     results, errors = [], {}
     for t in tickers:
         t0 = time.perf_counter()
@@ -59,4 +106,4 @@ def main(argv: list[str] | None = None) -> int:
             f.write(out)
     else:
         sys.stdout.write(out + "\n")
-    return 0 if results else 1
+    return 0 if results or not tickers else 1
