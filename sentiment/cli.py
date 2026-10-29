@@ -46,6 +46,7 @@ def _unique(tickers: list[str]) -> list[str]:
 
 def _store(args) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr)
+    logging.getLogger("httpx").setLevel(logging.WARNING)   # its request lines print the project URL to public Actions logs
     from .store import Store
 
     store = Store.from_env()
