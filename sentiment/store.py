@@ -7,6 +7,7 @@ import math
 import os
 import re
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -18,6 +19,7 @@ log = logging.getLogger(__name__)
 
 _IGNORE_DUP = "resolution=ignore-duplicates,return=minimal"
 _TICKER = re.compile(r"^[A-Z0-9.\-]{1,10}$")   # same check as the pro_sentiment_* tables
+_UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 RUNS = ("main", "refresh", "manual", "ondemand", "list")
 
 
@@ -27,6 +29,28 @@ class StoreError(Exception):
 
 def canonical(ticker: str) -> str:
     return ticker.strip().upper().replace("-", ".")
+
+
+def parse_requests(spec: str) -> list[tuple[str, str]]:
+    """'AAPL=uuid,BRK-B=uuid' -> [(canonical ticker, lowercase uuid)]; ValueError on any violation."""
+    pairs, tickers, ids = [], set(), set()
+    for part in (spec or "").split(","):
+        left, sep, right = part.strip().partition("=")
+        if not sep or "=" in right:
+            raise ValueError("each request must look like TICKER=request_id")
+        t, i = canonical(left), right.strip().lower()
+        if not _TICKER.match(t):
+            raise ValueError(f"invalid ticker {t[:12]!r}")
+        if not _UUID.match(i):
+            raise ValueError(f"invalid request id for {t}")
+        if t in tickers or i in ids:
+            raise ValueError("duplicate ticker or request id")
+        tickers.add(t)
+        ids.add(i)
+        pairs.append((t, i))
+    if not 1 <= len(pairs) <= 5:
+        raise ValueError("1 to 5 requests are allowed")
+    return pairs
 
 
 def clean_json(x):
@@ -117,13 +141,16 @@ class Store:
             return None
         return cls(url, key)
 
-    def _post(self, path: str, body, prefer: str | None = None) -> httpx.Response:
+    def _send(self, method: str, path: str, body=None, prefer: str | None = None, params=None) -> httpx.Response:
         headers = dict(self._headers)
         if prefer:
             headers["Prefer"] = prefer
+        kw = {"params": params} if params else {}
+        if method != "GET":
+            kw["json"] = body
         for attempt in (0, 1):
             try:
-                r = self._client.post(self._base + path, json=body, headers=headers)
+                r = self._client.request(method, self._base + path, headers=headers, **kw)
             except httpx.TransportError as e:
                 if attempt == 0:
                     time.sleep(2)
@@ -138,6 +165,22 @@ class Store:
                 raise StoreError(f"{r.status_code} {path}: {r.text[:300]}")
             return r
         raise StoreError(f"request failed {path}")  # unreachable
+
+    def _post(self, path: str, body, prefer: str | None = None) -> httpx.Response:
+        return self._send("POST", path, body, prefer)
+
+    def _patch(self, path: str, body, params=None) -> httpx.Response:
+        return self._send("PATCH", path, body, "return=minimal", params)
+
+    def _get(self, path: str, params=None) -> list:
+        r = self._send("GET", path, params=params)
+        try:
+            data = r.json()
+        except ValueError:
+            raise StoreError(f"bad response {path}") from None
+        if not isinstance(data, list):
+            raise StoreError(f"bad response {path}")
+        return data
 
     def _rpc_int(self, path: str, body) -> int:
         r = self._post(path, body)
@@ -205,6 +248,56 @@ class Store:
         if errors:
             raise StoreError("; ".join(errors))
         return len(rows)
+
+    def mark_requests(self, ids: list[str], status: str, error: str | None = None) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        if status == "running":
+            allowed, body = "queued", {"status": "running", "started_at": now}
+        elif status == "done":   # a result arriving after the 20-min timeout still closes the request
+            allowed, body = "queued,running,failed", {"status": "done", "finished_at": now, "error": None}
+        elif status == "failed":
+            allowed = "queued,running"
+            body = {"status": "failed", "finished_at": now, "error": (error or "analysis failed")[:500]}
+        else:
+            raise ValueError(f"unknown request status {status!r}")
+        if not ids:
+            return
+        flt = {"id": "in.(" + ",".join(ids) + ")", "status": "in.(" + allowed + ")"}
+        if status == "running":
+            flt["status"] = "eq.queued"
+        self._patch("/pro_sentiment_requests", body, flt)
+
+    def pull_history(self, tickers: list[str], out_dir: Path, days: int = 90) -> int:
+        tickers = sorted({canonical(t) for t in tickers})
+        bad = [t for t in tickers if not _TICKER.match(t)]
+        if bad:
+            raise StoreError(f"invalid tickers {bad[:5]}")
+        if not tickers:
+            return 0
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        rows = self._get("/pro_sentiment_snapshots", [
+            ("select", "ticker,data"),
+            ("ticker", "in.(" + ",".join(f'"{t}"' for t in tickers) + ")"),
+            ("as_of", "gte." + since),
+            # newest first: PostgREST caps a response (max_rows, 1000 by default), so a cut drops the oldest days
+            ("order", "as_of.desc"),
+        ])
+        if isinstance(rows, list) and len(rows) >= 1000:
+            log.warning("history pull hit the 1000-row cap; the oldest days are missing")
+        by: dict[str, list[str]] = {}
+        for row in reversed(rows):
+            if not isinstance(row, dict) or not isinstance(row.get("data"), dict):
+                continue
+            t = canonical(str(row.get("ticker") or ""))
+            if t in tickers:
+                by.setdefault(t, []).append(json.dumps(row["data"], ensure_ascii=False))
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        n = 0
+        for t, lines in by.items():
+            (out_dir / f"{t}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+            n += len(lines)
+        return n
 
     def close(self) -> None:
         self._client.close()

@@ -282,3 +282,173 @@ def test_new_secret_key_sent_as_apikey_only(monkeypatch):
     s = Store("https://x.supabase.co", "sb_secret_abc", client=httpx.Client(transport=httpx.MockTransport(handler)))
     s.set_universe(["NVDA"])
     assert seen[0]["apikey"] == "sb_secret_abc" and "authorization" not in seen[0]
+
+
+# ---- on-demand requests ----
+U1, U2, U3 = ("11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222",
+              "33333333-3333-4333-8333-333333333333")
+
+
+def test_parse_requests_ok_and_canonical():
+    assert store_mod.parse_requests(f" aapl = {U1.upper()} , BRK-B={U2}") == [("AAPL", U1), ("BRK.B", U2)]
+
+
+@pytest.mark.parametrize("spec", [
+    ",".join(f"T{i}=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa{i:02d}" for i in range(6)),   # 6 pairs
+    f"AAPL={U1},AAPL={U2}", f"AAPL={U1},MSFT={U1}", "AAPL=not-a-uuid", f"TOOLONGTICKER1={U1}",
+    f"A$={U1}", f"AAPL{U1}", "", f"AAPL={U1},", f"AAPL={U1}=x",
+])
+def test_parse_requests_bad(spec):
+    with pytest.raises(ValueError):
+        store_mod.parse_requests(spec)
+
+
+def test_mark_requests_queries(monkeypatch):
+    seen = []
+
+    def handler(req):
+        seen.append(req)
+        return httpx.Response(204)
+
+    s = _store(monkeypatch, handler)
+    s.mark_requests([U1, U2], "running")
+    s.mark_requests([U1], "done")
+    s.mark_requests([U1], "failed", "x" * 600)
+    s.mark_requests([U1], "failed")
+    s.mark_requests([], "done")
+    assert len(seen) == 4
+    for r in seen:
+        assert r.method == "PATCH" and r.url.path == "/rest/v1/pro_sentiment_requests"
+        assert r.headers["Prefer"] == "return=minimal"
+    p = [r.url.params for r in seen]
+    b = [json.loads(r.content) for r in seen]
+    assert p[0]["id"] == f"in.({U1},{U2})" and p[0]["status"] == "eq.queued"
+    assert b[0]["status"] == "running" and b[0]["started_at"]
+    assert p[1]["status"] == "in.(queued,running,failed)"
+    assert b[1]["status"] == "done" and b[1]["error"] is None and b[1]["finished_at"]
+    assert p[2]["status"] == "in.(queued,running)"
+    assert b[2]["status"] == "failed" and len(b[2]["error"]) == 500
+    assert b[3]["error"] == "analysis failed"
+
+
+def test_mark_requests_bad_status(monkeypatch):
+    s = _store(monkeypatch, lambda req: (_ for _ in ()).throw(AssertionError("no request")))
+    with pytest.raises(ValueError):
+        s.mark_requests([U1], "queued")
+
+
+def test_pull_history(monkeypatch, tmp_path):
+    seen = []
+    a1, a2 = compact(_full("AAPL")), compact(_full("AAPL", as_of="2026-10-30T12:05:00+00:00"))
+
+    def handler(req):
+        seen.append(req)
+        return httpx.Response(200, json=[
+            {"ticker": "AAPL", "data": a2}, {"ticker": "AAPL", "data": a1},   # newest first, as requested
+            {"ticker": "BRK.B", "data": "nope"}, {"ticker": "MSFT", "data": {"ticker": "MSFT", "as_of": "t"}}])
+
+    s = _store(monkeypatch, handler)
+    out = tmp_path / "snaps"
+    (out).mkdir()
+    (out / "AAPL.jsonl").write_text("old\n", encoding="utf-8")
+    assert s.pull_history(["aapl", "BRK-B", "MSFT"], out) == 3
+    q = seen[0].url.params
+    assert q["select"] == "ticker,data" and q["order"] == "as_of.desc"
+    assert q["ticker"] == 'in.("AAPL","BRK.B","MSFT")' and q["as_of"].startswith("gte.20")
+    lines = (out / "AAPL.jsonl").read_text(encoding="utf-8").splitlines()
+    assert [json.loads(x) for x in lines] == [a1, a2]
+    assert (out / "MSFT.jsonl").exists() and not (out / "BRK.B.jsonl").exists()
+    assert s.pull_history([], out) == 0 and len(seen) == 1
+
+
+def _cli_store(monkeypatch, handler):
+    s = _store(monkeypatch, handler)
+    monkeypatch.setattr(Store, "from_env", classmethod(lambda cls: s))
+    return s
+
+
+def _patches(calls):
+    return [(json.loads(r.content), r.url.params) for r in calls if r.method == "PATCH"]
+
+
+def test_cli_finalize_done_and_failed(monkeypatch, tmp_path):
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        return httpx.Response(200, json=1) if "rpc" in req.url.path else httpx.Response(201)
+
+    _cli_store(monkeypatch, handler)
+    res = tmp_path / "out.json"
+    res.write_text(json.dumps({"results": [_full("AAPL")], "errors": {"MSFT": "RuntimeError: boom"}}),
+                   encoding="utf-8")
+    rc = cli.main(["store", "--requests", f"AAPL={U1},MSFT={U2}", "--results", str(res), "--run", "ondemand"])
+    assert rc == 0
+    pt = _patches(calls)
+    assert len(pt) == 2
+    assert pt[0][0]["status"] == "done" and pt[0][1]["id"] == f"in.({U1})"
+    assert pt[1][0]["status"] == "failed" and pt[1][0]["error"] == "RuntimeError: boom"
+    assert pt[1][1]["id"] == f"in.({U2})"
+
+
+def test_cli_finalize_no_results_file(monkeypatch, tmp_path):
+    calls = []
+    _cli_store(monkeypatch, lambda req: calls.append(req) or httpx.Response(204))
+    assert cli.main(["store", "--requests", f"AAPL={U1},MSFT={U2}"]) == 0
+    pt = _patches(calls)
+    assert len(pt) == 2 and all(b["status"] == "failed" and b["error"] == "no result" for b, _ in pt)
+    calls.clear()   # a results path that does not exist behaves the same
+    _cli_store(monkeypatch, lambda req: calls.append(req) or httpx.Response(204))   # the first store was closed
+    assert cli.main(["store", "--requests", f"AAPL={U1}", "--results", str(tmp_path / "nope.json")]) == 0
+    assert [b["error"] for b, _ in _patches(calls)] == ["no result"]
+
+
+def test_cli_finalize_store_failure(monkeypatch, tmp_path):
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        if req.method == "PATCH":
+            return httpx.Response(204)
+        return httpx.Response(400, text="bad")
+
+    _cli_store(monkeypatch, handler)
+    res = tmp_path / "out.json"
+    res.write_text(json.dumps({"results": [_full("AAPL")], "errors": {}}), encoding="utf-8")
+    assert cli.main(["store", "--requests", f"AAPL={U1},MSFT={U2}", "--results", str(res)]) == 1
+    pt = _patches(calls)
+    assert len(pt) == 1 and pt[0][0]["status"] == "failed" and pt[0][0]["error"] == "store failed"
+    assert pt[0][1]["id"] == f"in.({U1},{U2})"
+
+
+def test_cli_mark_and_pull(monkeypatch, tmp_path):
+    calls = []
+
+    def handler(req):
+        calls.append(req)
+        return httpx.Response(200, json=[{"ticker": "AAPL", "data": compact(_full("AAPL"))}]) \
+            if req.method == "GET" else httpx.Response(204)
+
+    _cli_store(monkeypatch, handler)
+    rc = cli.main(["store", "--requests", f"AAPL={U1}", "--mark", "running", "--pull-history",
+                   "--to", str(tmp_path / "d")])
+    assert rc == 0
+    assert [c.method for c in calls] == ["PATCH", "GET"]   # marking running does not finalize
+    assert (tmp_path / "d" / "AAPL.jsonl").exists()
+
+
+def test_cli_invalid_requests_no_http(monkeypatch):
+    def handler(req):
+        raise AssertionError("no http expected")
+
+    _cli_store(monkeypatch, handler)
+    assert cli.main(["store", "--requests", "AAPL=bad"]) == 1
+    monkeypatch.setattr(Store, "from_env", classmethod(lambda cls: None))
+    assert cli.main(["store", "--requests", "AAPL=bad"]) == 1   # fails even when unconfigured
+
+
+def test_cli_mark_requires_requests():
+    with pytest.raises(SystemExit):
+        cli.main(["store", "--mark", "running", "--universe", "u.txt"])
+    with pytest.raises(SystemExit):
+        cli.main(["store", "--pull-history", "--universe", "u.txt"])

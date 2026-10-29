@@ -47,34 +47,76 @@ def _unique(tickers: list[str]) -> list[str]:
 def _store(args) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr)
     logging.getLogger("httpx").setLevel(logging.WARNING)   # its request lines print the project URL to public Actions logs
-    from .store import Store
+    from .store import Store, canonical, parse_requests
 
+    reqs = []
+    if args.requests:
+        try:
+            reqs = parse_requests(args.requests)   # validated before touching the DB
+        except ValueError as e:
+            logging.error("invalid --requests: %s", e)
+            return 1
+    finalize = bool(reqs) and not args.mark
     store = Store.from_env()
     if store is None:
         return 0
     failed = False
+    ids = [i for _, i in reqs]
     try:
+        if args.mark:
+            try:
+                store.mark_requests(ids, args.mark)
+            except Exception as e:
+                logging.error("%s: %s", type(e).__name__, e)
+                failed = True
+        if args.pull_history:
+            try:
+                logging.info("pulled %d history rows",
+                             store.pull_history([t for t, _ in reqs], Path(args.to)))
+            except Exception as e:
+                logging.error("%s: %s", type(e).__name__, e)
+                failed = True
         if args.history:
             try:
                 logging.info("history: %d rows", store.import_history(Path(args.history)))
             except Exception as e:   # any failure: log it and still run the remaining steps
                 logging.error("%s: %s", type(e).__name__, e)
                 failed = True
-        results = []
+        results, errors = [], {}
         for path in args.results:
             try:
                 with open(path, encoding="utf-8") as f:
-                    results.extend(json.load(f)["results"])
+                    data = json.load(f)
+                results.extend(data["results"])
+                if isinstance(data.get("errors"), dict):
+                    errors.update({canonical(str(k)): str(v) for k, v in data["errors"].items()})
             except FileNotFoundError:
                 logging.warning("results file %s not found; skipping", path)
-            except (ValueError, KeyError, TypeError, OSError) as e:
+            except (ValueError, KeyError, TypeError, AttributeError, OSError) as e:
                 logging.error("cannot read %s: %s", path, e)
                 failed = True
+        write_failed = False
         if args.results:
             try:
                 r = store.write_results(results, args.run)
                 logging.info("stored %d snapshots, %d latest updated", r["snapshots"], r["latest"])
             except Exception as e:   # any failure: log it and still run the remaining steps
+                logging.error("%s: %s", type(e).__name__, e)
+                failed = write_failed = True
+        if finalize:
+            try:
+                if write_failed:
+                    store.mark_requests(ids, "failed", "store failed")
+                else:
+                    have = {canonical(str(d["ticker"])) for d in results
+                            if isinstance(d, dict) and d.get("ticker") and d.get("as_of")}
+                    done = [i for t, i in reqs if t in have]
+                    if done:
+                        store.mark_requests(done, "done")
+                    for t, i in reqs:
+                        if t not in have:
+                            store.mark_requests([i], "failed", errors.get(t) or "no result")
+            except Exception as e:
                 logging.error("%s: %s", type(e).__name__, e)
                 failed = True
         if args.universe:
@@ -101,7 +143,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--items", action="store_true", help="include every scored item")
     a.add_argument("--device", default="auto")
     a.add_argument("--no-save", action="store_true", help="do not append results to data/snapshots/")
-    a.add_argument("--run", default="manual", choices=("main", "refresh", "manual"),
+    a.add_argument("--run", default="manual", choices=("main", "refresh", "manual", "ondemand"),
                    help="run kind recorded in the snapshot (main = the pre-open daily run)")
     a.add_argument("--out", help="write JSON here instead of stdout")
     s = sub.add_parser("store", help="write results / universe / history to the HUB Supabase DB")
@@ -109,10 +151,16 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--run", default="main", choices=("main", "refresh", "manual", "ondemand", "list"))
     s.add_argument("--universe", help="tickers file that replaces the pre-analyzed universe")
     s.add_argument("--history", help="directory of <TICKER>.jsonl snapshot files to import")
+    s.add_argument("--requests", help="on-demand requests: TICKER=request_id,... (up to 5)")
+    s.add_argument("--mark", choices=("running",), help="mark the --requests as running")
+    s.add_argument("--pull-history", action="store_true", help="download the --requests tickers' history")
+    s.add_argument("--to", default="data/snapshots", help="directory for --pull-history")
     args = p.parse_args(argv)
     if args.cmd == "store":
-        if not (args.results or args.universe or args.history):
-            s.error("at least one of --results / --universe / --history is required")
+        if (args.mark or args.pull_history) and not args.requests:
+            s.error("--mark / --pull-history require --requests")
+        if not (args.results or args.universe or args.history or args.requests):
+            s.error("at least one of --results / --universe / --history / --requests is required")
         return _store(args)
 
     try:
