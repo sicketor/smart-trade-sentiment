@@ -29,7 +29,9 @@ DEFAULT_HOST_INTERVAL = 0.5
 HTTP_TIMEOUT = 15.0
 HOST_COOLDOWN_429 = 180.0   # seconds a host is skipped once it is still 429 after the retries (Reddit on Actions)
 
-LOOKBACK_DAYS = 7           # collect items up to this age
+SUPABASE_BATCH = 200        # rows per PostgREST request
+SUPABASE_TIMEOUT = 30.0     # seconds per request
+LOOKBACK_DAYS = 7         # collect items up to this age
 REDDIT_SUBS = ("wallstreetbets", "stocks", "investing", "options", "StockMarket")
 
 # SPEC §8

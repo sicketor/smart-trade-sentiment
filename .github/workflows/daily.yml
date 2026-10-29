@@ -103,7 +103,7 @@ jobs:
         run: |
           python -m sentiment analyze --tickers-file data/universe.txt \
             --shard ${{ matrix.shard }}/$SHARDS --no-llm --device cpu --out shard.json \
-            --run ${{ github.event.schedule == '5 16 * * *' && 'refresh' || 'main' }}
+            --run ${{ github.event_name == 'workflow_dispatch' && 'manual' || (github.event.schedule == '5 16 * * *' && 'refresh' || 'main') }}
 
       # every file that changed since the restore: only this shard writes here, and the engine may
       # normalize a symbol (universe BRK-B is saved as BRK.B); a timeout still keeps the tickers already done
@@ -132,6 +132,38 @@ jobs:
           name: shard-${{ matrix.shard }}
           path: out/
           retention-days: 14
+
+  # Secrets live only in this job, which does no scraping. Without the secrets it logs and skips.
+  store:
+    needs: analyze
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install "httpx>=0.27" "python-dotenv>=1.0"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: shards
+
+      - name: Write to Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          shopt -s nullglob
+          files=(shards/shard-*/shard.json)
+          args=(--universe data/universe.txt)
+          if [ ${#files[@]} -gt 0 ]; then args+=(--results "${files[@]}"); fi
+          python -m sentiment store "${args[@]}" \
+            --run ${{ github.event_name == 'workflow_dispatch' && 'manual' || (github.event.schedule == '5 16 * * *' && 'refresh' || 'main') }}
 
   commit:
     needs: analyze

@@ -8,6 +8,7 @@ import logging
 import sys
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from . import config
 
@@ -43,6 +44,49 @@ def _unique(tickers: list[str]) -> list[str]:
     return list(dict.fromkeys(tickers))
 
 
+def _store(args) -> int:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr)
+    from .store import Store
+
+    store = Store.from_env()
+    if store is None:
+        return 0
+    failed = False
+    try:
+        if args.history:
+            try:
+                logging.info("history: %d rows", store.import_history(Path(args.history)))
+            except Exception as e:   # any failure: log it and still run the remaining steps
+                logging.error("%s: %s", type(e).__name__, e)
+                failed = True
+        results = []
+        for path in args.results:
+            try:
+                with open(path, encoding="utf-8") as f:
+                    results.extend(json.load(f)["results"])
+            except FileNotFoundError:
+                logging.warning("results file %s not found; skipping", path)
+            except (ValueError, KeyError, TypeError, OSError) as e:
+                logging.error("cannot read %s: %s", path, e)
+                failed = True
+        if args.results:
+            try:
+                r = store.write_results(results, args.run)
+                logging.info("stored %d snapshots, %d latest updated", r["snapshots"], r["latest"])
+            except Exception as e:   # any failure: log it and still run the remaining steps
+                logging.error("%s: %s", type(e).__name__, e)
+                failed = True
+        if args.universe:
+            try:
+                logging.info("universe: %d tickers", store.set_universe(read_tickers_file(args.universe)))
+            except Exception as e:
+                logging.error("%s: %s", type(e).__name__, e)
+                failed = True
+    finally:
+        store.close()
+    return 1 if failed else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="sentiment")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -59,7 +103,16 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--run", default="manual", choices=("main", "refresh", "manual"),
                    help="run kind recorded in the snapshot (main = the pre-open daily run)")
     a.add_argument("--out", help="write JSON here instead of stdout")
+    s = sub.add_parser("store", help="write results / universe / history to the HUB Supabase DB")
+    s.add_argument("--results", nargs="+", action="extend", default=[], help="analyze --out JSON files")
+    s.add_argument("--run", default="main", choices=("main", "refresh", "manual", "ondemand", "list"))
+    s.add_argument("--universe", help="tickers file that replaces the pre-analyzed universe")
+    s.add_argument("--history", help="directory of <TICKER>.jsonl snapshot files to import")
     args = p.parse_args(argv)
+    if args.cmd == "store":
+        if not (args.results or args.universe or args.history):
+            s.error("at least one of --results / --universe / --history is required")
+        return _store(args)
 
     try:
         shard = parse_shard(args.shard) if args.shard else None
