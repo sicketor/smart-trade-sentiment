@@ -93,7 +93,9 @@ def _chunks(rows: list, n: int):
 class Store:
     def __init__(self, url: str, key: str, client: httpx.Client | None = None):
         self._base = url.rstrip("/") + "/rest/v1"
-        self._headers = {"apikey": key, "Authorization": "Bearer " + key, "Content-Type": "application/json"}
+        self._headers = {"apikey": key, "Content-Type": "application/json"}
+        if not key.startswith("sb_"):   # legacy service_role JWT; new sb_secret_ keys go in apikey only (not a JWT)
+            self._headers["Authorization"] = "Bearer " + key
         self._client = client or httpx.Client(timeout=config.SUPABASE_TIMEOUT)
 
     def __repr__(self) -> str:

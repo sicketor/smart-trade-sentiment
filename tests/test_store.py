@@ -269,3 +269,16 @@ def test_set_universe_rejects_invalid_without_request(monkeypatch):
     with pytest.raises(StoreError, match="invalid universe"):
         s.set_universe(["NVDA", "WAYTOOLONG123"])
     assert not calls
+
+
+def test_new_secret_key_sent_as_apikey_only(monkeypatch):
+    seen = []
+
+    def handler(req):
+        seen.append(dict(req.headers))
+        return httpx.Response(200, json=1)
+
+    monkeypatch.setattr(store_mod.time, "sleep", lambda s: None)
+    s = Store("https://x.supabase.co", "sb_secret_abc", client=httpx.Client(transport=httpx.MockTransport(handler)))
+    s.set_universe(["NVDA"])
+    assert seen[0]["apikey"] == "sb_secret_abc" and "authorization" not in seen[0]
