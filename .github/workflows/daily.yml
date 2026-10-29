@@ -101,22 +101,21 @@ jobs:
           python -m sentiment analyze --tickers-file data/universe.txt \
             --shard ${{ matrix.shard }}/$SHARDS --no-llm --device cpu --out shard.json
 
-      # from the shard's own ticker list, not shard.json: a timeout still keeps the tickers already done
+      # every file that changed since the restore: only this shard writes here, and the engine may
+      # normalize a symbol (universe BRK-B is saved as BRK.B); a timeout still keeps the tickers already done
       - name: Collect this shard's snapshot files
         if: always()
         run: |
           mkdir -p out/snapshots
           python - <<'EOF'
           import hashlib, pathlib, shutil
-          from sentiment.cli import read_tickers_file, select_shard
           before = {}
           for line in pathlib.Path("data/restored.sha1").read_text().splitlines():
               h, name = line.split(maxsplit=1)
               before[name.lstrip("*")] = h
           n = 0
-          for t in select_shard(read_tickers_file("data/universe.txt"), ${{ matrix.shard }}, int("${{ env.SHARDS }}")):
-              f = pathlib.Path("data/snapshots") / f"{t}.jsonl"
-              if f.exists() and hashlib.sha1(f.read_bytes()).hexdigest() != before.get(f.name):
+          for f in sorted(pathlib.Path("data/snapshots").glob("*.jsonl")):
+              if hashlib.sha1(f.read_bytes()).hexdigest() != before.get(f.name):
                   shutil.copy(f, "out/snapshots/")
                   n += 1
           print(n, "updated snapshot files")
