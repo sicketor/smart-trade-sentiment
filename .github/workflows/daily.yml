@@ -5,7 +5,10 @@ name: daily-snapshots
 
 on:
   schedule:
-    - cron: "30 21 * * *"   # after the US close in both EDT (20:00 UTC) and EST (21:00 UTC)
+    # main: before the US open, after the overnight news and most pre-market reports (15:00 Israel summer / 14:00 winter)
+    - cron: "5 12 * * *"
+    # refresh: mid-session (19:00 Israel summer / 18:00 winter). :05 because GitHub delays top-of-hour runs most
+    - cron: "5 16 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -99,7 +102,8 @@ jobs:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
           python -m sentiment analyze --tickers-file data/universe.txt \
-            --shard ${{ matrix.shard }}/$SHARDS --no-llm --device cpu --out shard.json
+            --shard ${{ matrix.shard }}/$SHARDS --no-llm --device cpu --out shard.json \
+            --run ${{ github.event.schedule == '5 16 * * *' && 'refresh' || 'main' }}
 
       # every file that changed since the restore: only this shard writes here, and the engine may
       # normalize a symbol (universe BRK-B is saved as BRK.B); a timeout still keeps the tickers already done
@@ -166,7 +170,7 @@ jobs:
             echo "nothing to commit"; exit 0
           fi
           git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-            commit -q -m "snapshots $(date -u +%F)"
+            commit -q -m "snapshots $(date -u +"%F %H:%M") UTC"
           git push origin data
 
       # GitHub disables schedules in public repos after 60 days without activity; bot pushes to `data` may not count

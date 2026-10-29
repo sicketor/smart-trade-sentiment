@@ -38,3 +38,10 @@ def test_days_cutoff_invalid_and_missing(tmp_path):
     h = history("NVDA", datetime(2025, 10, 22, tzinfo=timezone.utc), days=30, root=tmp_path)
     assert h["news"] == [3.0]
     assert history("AMD", datetime(2025, 10, 22, tzinfo=timezone.utc), root=tmp_path) == {}
+
+
+def test_record_keeps_run_kind(tmp_path):
+    d = {**_d("2025-10-20T12:00:00+00:00", 5, 10), "run": "refresh"}
+    row = json.loads(record(d, tmp_path).read_text(encoding="utf-8"))
+    assert row["run"] == "refresh"
+    assert compact(_d("2025-10-20T12:00:00+00:00", 5, 10))["run"] is None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 
 import numpy as np
@@ -32,6 +33,7 @@ class Engine:
     def __init__(self, use_llm: bool = True, device: str = "auto"):
         from .models.runner import ModelRunner
         self.http = Http()
+        self.last_timings: dict[str, float] = {}   # seconds per stage of the last analyze()
         self.runner = ModelRunner(device=device)
         self.meta = Meta()
         self.llm = None
@@ -68,14 +70,21 @@ class Engine:
         if company is None:
             raise ValueError(f"unknown US ticker: {ticker}")
         as_of = as_of or datetime.now(timezone.utc)
+        t = [time.perf_counter()]
         raw, ok, failed = collect(company, self.http, as_of - timedelta(days=days), only=only)
+        t.append(time.perf_counter())
         items = self._score(company, raw)
+        t.append(time.perf_counter())
         try:
             context = fetch_context(company, self.http)
         except Exception as e:   # context is optional decoration
             log.warning("context failed for %s: %s", ticker, e)
             context = {}
+        t.append(time.perf_counter())
         s = summarize(items, as_of, context, history=history, norm=self.norm)
+        t.append(time.perf_counter())
+        self.last_timings = {k: round(b - a, 2) for k, a, b in
+                             zip(("collect", "score", "context", "aggregate"), t, t[1:])}
         return TickerSnapshot(
             ticker=company.ticker, company=company.short_name, as_of=as_of,
             composite=s["composite"], channels=s["channels"], attention_z=s["attention_z"],

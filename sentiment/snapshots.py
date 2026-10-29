@@ -18,6 +18,7 @@ def compact(d: dict) -> dict:
         "ticker": d.get("ticker"),
         "as_of": d.get("as_of"),
         "model_version": d.get("model_version"),
+        "run": d.get("run"),   # main | refresh | manual (daily.yml schedule); calibration uses main only
         "flags": d.get("flags"),
         "attention_z": d.get("attention_z"),
         "composite": {k: comp.get(k) for k in _KEYS},

@@ -56,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--items", action="store_true", help="include every scored item")
     a.add_argument("--device", default="auto")
     a.add_argument("--no-save", action="store_true", help="do not append results to data/snapshots/")
+    a.add_argument("--run", default="manual", choices=("main", "refresh", "manual"),
+                   help="run kind recorded in the snapshot (main = the pre-open daily run)")
     a.add_argument("--out", help="write JSON here instead of stdout")
     args = p.parse_args(argv)
 
@@ -93,11 +95,13 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if not args.no_save:
             try:
-                record(snapshot_to_dict(snap, None))
+                record({**snapshot_to_dict(snap, None), "run": args.run})
             except Exception:
                 logging.exception("saving snapshot for %s failed", t)
         d = snapshot_to_dict(snap, items if args.items else None)
         d["elapsed_s"] = round(time.perf_counter() - t0, 1)
+        d["timings_s"] = engine.last_timings
+        logging.info("%s timings %s items=%d", t, engine.last_timings, len(items))
         results.append(d)
 
     out = json.dumps({"results": results, "errors": errors}, ensure_ascii=False, indent=2, default=str)
