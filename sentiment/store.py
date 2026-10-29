@@ -108,6 +108,15 @@ def latest_row(d: dict, run: str) -> dict:
     })
 
 
+def _retry_after(r: httpx.Response, default: float) -> float:
+    """Retry-After seconds when the server sends a sane one (capped at a minute), else the backoff default."""
+    try:
+        v = float(r.headers.get("retry-after", ""))
+    except ValueError:
+        return default
+    return min(max(v, 0.0), 60.0) if math.isfinite(v) else default
+
+
 def _chunks(rows: list, n: int):
     n = max(1, n)
     for i in range(0, len(rows), n):
@@ -148,18 +157,24 @@ class Store:
         kw = {"params": params} if params else {}
         if method != "GET":
             kw["json"] = body
-        for attempt in (0, 1):
+        # every write is idempotent (on_conflict ignore, upsert RPC, replace, patch), so a retry after a 5xx is safe
+        delays = config.SUPABASE_RETRY_DELAYS
+        for attempt in range(len(delays) + 1):
+            last = attempt == len(delays)
             try:
                 r = self._client.request(method, self._base + path, headers=headers, **kw)
             except httpx.TransportError as e:
-                if attempt == 0:
-                    time.sleep(2)
+                if not last:
+                    log.warning("transport error %s (%s); retrying in %ss", path, type(e).__name__, delays[attempt])
+                    time.sleep(delays[attempt])
                     continue
                 raise StoreError(f"transport error {path}: {type(e).__name__}") from None
             except (httpx.HTTPError, httpx.InvalidURL) as e:   # e.g. a malformed SUPABASE_URL
                 raise StoreError(f"request error {path}: {type(e).__name__}") from None
-            if r.status_code >= 500 and attempt == 0:
-                time.sleep(2)
+            if (r.status_code >= 500 or r.status_code == 429) and not last:
+                wait = _retry_after(r, delays[attempt])
+                log.warning("%s %s; retrying in %ss", r.status_code, path, wait)
+                time.sleep(wait)
                 continue
             if r.status_code >= 400:
                 raise StoreError(f"{r.status_code} {path}: {r.text[:300]}")

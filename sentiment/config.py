@@ -31,6 +31,7 @@ HOST_COOLDOWN_429 = 180.0   # seconds a host is skipped once it is still 429 aft
 
 SUPABASE_BATCH = 200        # rows per PostgREST request
 SUPABASE_TIMEOUT = 30.0     # seconds per request
+SUPABASE_RETRY_DELAYS = (2, 10, 30, 60)   # seconds before each retry on 5xx/429/transport errors (~100s total)
 LOOKBACK_DAYS = 7         # collect items up to this age
 REDDIT_SUBS = ("wallstreetbets", "stocks", "investing", "options", "StockMarket")
 

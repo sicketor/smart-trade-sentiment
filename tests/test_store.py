@@ -101,20 +101,41 @@ def test_4xx_raises_without_key_and_no_retry(monkeypatch):
     assert len(n) == 2   # one per phase (snapshots, latest), no retry
 
 
-def test_5xx_retried_once(monkeypatch):
+def test_5xx_retried_with_backoff(monkeypatch):
     n = []
 
     def handler(req):
         n.append(1)
-        return httpx.Response(503 if len(n) == 1 else 200, json=1)
+        return httpx.Response(503 if len(n) < 3 else 200, json=1)
 
     assert _store(monkeypatch, handler).set_universe(["a"]) == 1
-    assert len(n) == 2
+    assert len(n) == 3
 
     n.clear()
+    slept = []
+    st = _store(monkeypatch, lambda r: (n.append(1), httpx.Response(500, text="x"))[1])
+    monkeypatch.setattr(store_mod.time, "sleep", slept.append)
     with pytest.raises(StoreError):
-        _store(monkeypatch, lambda r: (n.append(1), httpx.Response(500, text="x"))[1]).set_universe(["a"])
-    assert len(n) == 2
+        st.set_universe(["a"])
+    assert len(n) == len(config.SUPABASE_RETRY_DELAYS) + 1
+    assert slept == list(config.SUPABASE_RETRY_DELAYS)
+
+
+def test_429_honors_retry_after(monkeypatch):
+    n, slept = [], []
+
+    def handler(req):
+        n.append(1)
+        if len(n) == 1:
+            return httpx.Response(429, headers={"Retry-After": "7"}, text="slow down")
+        if len(n) == 2:
+            return httpx.Response(429, headers={"Retry-After": "9999"}, text="slow down")
+        return httpx.Response(200, json=1)
+
+    st = _store(monkeypatch, handler)
+    monkeypatch.setattr(store_mod.time, "sleep", slept.append)
+    assert st.set_universe(["a"]) == 1
+    assert slept == [7.0, 60.0]
 
 
 def test_transport_error_retried(monkeypatch):

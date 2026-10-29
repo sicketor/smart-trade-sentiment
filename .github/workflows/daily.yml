@@ -162,8 +162,14 @@ jobs:
           files=(shards/shard-*/shard.json)
           args=(--universe data/universe.txt)
           if [ ${#files[@]} -gt 0 ]; then args+=(--results "${files[@]}"); fi
-          python -m sentiment store "${args[@]}" \
-            --run ${{ github.event_name == 'workflow_dispatch' && 'manual' || (github.event.schedule == '5 16 * * *' && 'refresh' || 'main') }}
+          args+=(--run ${{ github.event_name == 'workflow_dispatch' && 'manual' || (github.event.schedule == '5 16 * * *' && 'refresh' || 'main') }})
+          # a Supabase outage can outlast the per-request backoff (29/10: ~40 min of 504s); the writes are
+          # idempotent, so the whole store is retried twice, 10 minutes apart
+          for try in 1 2 3; do
+            python -m sentiment store "${args[@]}" && exit 0
+            [ $try -lt 3 ] && { echo "store failed (try $try); retrying in 10 min"; sleep 600; }
+          done
+          exit 1
 
   commit:
     needs: analyze
