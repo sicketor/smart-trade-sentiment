@@ -452,3 +452,70 @@ def test_cli_mark_requires_requests():
         cli.main(["store", "--mark", "running", "--universe", "u.txt"])
     with pytest.raises(SystemExit):
         cli.main(["store", "--pull-history", "--universe", "u.txt"])
+
+
+def _list_db(lists, universe, latest, seen=None):
+    """MockTransport handler for pick_list: the lists, universe and latest tables."""
+    def handler(req):
+        if seen is not None:
+            seen.append(req)
+        path = req.url.path
+        if path.endswith("/pro_sentiment_lists"):
+            off, lim = int(req.url.params["offset"]), int(req.url.params["limit"])
+            return httpx.Response(200, json=[{"ticker": t} for t in lists[off:off + lim]])
+        if path.endswith("/pro_sentiment_universe"):
+            return httpx.Response(200, json=[{"ticker": t} for t in universe])
+        if path.endswith("/pro_sentiment_latest"):
+            want = req.url.params["ticker"][4:-1].replace('"', "").split(",")
+            return httpx.Response(200, json=[{"ticker": t, "as_of": a} for t, a in latest.items() if t in want])
+        if path.endswith("/pro_sentiment_snapshots"):
+            return httpx.Response(200, json=[])
+        return httpx.Response(404)
+    return handler
+
+
+def test_pick_list_filters_and_orders(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    latest = {"RKLB": (now - timedelta(hours=3)).isoformat(), "IONQ": (now - timedelta(hours=1)).isoformat(),
+              "SOFI": (now - timedelta(minutes=10)).isoformat()}   # SOFI is fresh
+    lists = ["RKLB", "nvda", "SOFI", "IONQ", "BRK-B", "RKLB", "bad ticker!"]
+    s = _store(monkeypatch, _list_db(lists, ["NVDA", "AAPL"], latest))
+    picked, due = s.pick_list(10)
+    assert picked == ["BRK.B", "RKLB", "IONQ"] and due == 3   # never analyzed first, then oldest
+    assert s.pick_list(2) == (["BRK.B", "RKLB"], 3)
+    assert s.pick_list(0) == ([], 3)
+
+
+def test_pick_list_pages_and_candidates(monkeypatch):
+    seen = []
+    lists = [f"T{i}" for i in range(1500)]
+    s = _store(monkeypatch, _list_db(lists, [], {}, seen))
+    picked, due = s.pick_list(5)
+    assert due == 1500 and picked == sorted(lists)[:5]
+    assert sum(r.url.path.endswith("/pro_sentiment_lists") for r in seen) == 2
+    assert sum(r.url.path.endswith("/pro_sentiment_latest") for r in seen) == 15   # 100 per request
+    seen.clear()
+    assert s.pick_list(5, candidates=["rklb", "NVDA"]) == (["NVDA", "RKLB"], 2)
+    assert not any(r.url.path.endswith("/pro_sentiment_lists") for r in seen)
+    assert s.pick_list(5, candidates=[]) == ([], 0)
+
+
+def test_cli_pick_list(monkeypatch, tmp_path):
+    out, snaps = tmp_path / "t.txt", tmp_path / "snaps"
+    _cli_store(monkeypatch, _list_db(["RKLB", "NVDA"], ["NVDA"], {}))
+    assert cli.main(["store", "--pick-list", "30", "--tickers-out", str(out), "--to", str(snaps)]) == 0
+    assert out.read_text(encoding="utf-8") == "RKLB\n"
+    _cli_store(monkeypatch, _list_db([], [], {}))
+    assert cli.main(["store", "--pick-list", "30", "--tickers-out", str(out)]) == 0
+    assert out.read_text(encoding="utf-8") == ""
+    _cli_store(monkeypatch, lambda req: httpx.Response(500))
+    assert cli.main(["store", "--pick-list", "30", "--tickers-out", str(out)]) == 1
+    assert out.read_text(encoding="utf-8") == ""
+
+
+def test_cli_pick_list_args():
+    with pytest.raises(SystemExit):
+        cli.main(["store", "--pick-list", "5", "--universe", "u.txt"])
+    with pytest.raises(SystemExit):
+        cli.main(["store", "--candidates", "RKLB", "--universe", "u.txt"])

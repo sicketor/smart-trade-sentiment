@@ -267,6 +267,55 @@ class Store:
             flt["status"] = "eq.queued"
         self._patch("/pro_sentiment_requests", body, flt)
 
+    def _all(self, path: str, params: list) -> list:
+        """Every row, page by page: PostgREST caps a response at 1000 rows."""
+        rows, page = [], 1000
+        while True:
+            got = self._get(path, params + [("limit", str(page)), ("offset", str(len(rows)))])
+            rows.extend(got)
+            if len(got) < page:
+                return rows
+
+    def pick_list(self, cap: int, candidates: list[str] | None = None,
+                  fresh_minutes: int = 30) -> tuple[list[str], int]:
+        """Watch-list tickers for the hourly refresh (SPEC-he.md §10.2 row D): the union of all lists (or
+        `candidates`), minus the universe (the daily runs cover it) and tickers analyzed in the last `fresh_minutes`.
+        Oldest result first (never analyzed = oldest), at most `cap`. Returns (picked, how many were due)."""
+        if candidates is None:
+            candidates = [r.get("ticker") for r in self._all("/pro_sentiment_lists",
+                                                             [("select", "ticker"), ("order", "ticker,user_id")])
+                          if isinstance(r, dict)]
+        tickers = {canonical(str(t)) for t in candidates if t and str(t).strip()}
+        bad = sorted(t for t in tickers if not _TICKER.match(t))
+        if bad:
+            log.warning("skipping invalid list tickers %s", bad[:5])
+            tickers -= set(bad)
+        if not tickers:
+            return [], 0
+        universe = {canonical(str(r.get("ticker") or "")) for r in
+                    self._all("/pro_sentiment_universe", [("select", "ticker"), ("order", "ticker")])
+                    if isinstance(r, dict)}
+        due = sorted(tickers - universe)
+        last: dict[str, str] = {}
+        for chunk in _chunks(due, 100):   # keeps the URL short
+            for r in self._get("/pro_sentiment_latest", [
+                ("select", "ticker,as_of"),
+                ("ticker", "in.(" + ",".join(f'"{t}"' for t in chunk) + ")"),
+            ]):
+                if isinstance(r, dict) and r.get("ticker") and r.get("as_of"):
+                    last[canonical(str(r["ticker"]))] = str(r["as_of"])
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=fresh_minutes)
+
+        def when(t: str) -> datetime:
+            try:
+                d = datetime.fromisoformat(last[t].replace("Z", "+00:00"))
+                return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+            except (KeyError, ValueError):
+                return datetime.min.replace(tzinfo=timezone.utc)
+
+        due = sorted((t for t in due if when(t) <= cutoff), key=lambda t: (when(t), t))
+        return due[:max(0, cap)], len(due)
+
     def pull_history(self, tickers: list[str], out_dir: Path, days: int = 90) -> int:
         tickers = sorted({canonical(t) for t in tickers})
         bad = [t for t in tickers if not _TICKER.match(t)]

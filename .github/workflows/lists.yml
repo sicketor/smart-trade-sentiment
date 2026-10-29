@@ -1,0 +1,127 @@
+# Hourly refresh of the traders' watch lists during US market hours (SPEC-he.md §10.2 row D).
+# Only list tickers outside the universe (the daily runs cover it) and without a result from the last 30 minutes,
+# oldest first, up to 30 per run. With nothing due the run ends before the heavy install.
+name: list-refresh
+
+on:
+  schedule:
+    - cron: "30 13-20 * * 1-5"   # GitHub often starts scheduled runs 30-50 minutes late
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Test: these tickers instead of the watch lists (same filters), comma- or space-separated"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: list-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SENTIMENT_CACHE: ${{ github.workspace }}/.cache
+      ST_BACKEND: onnx
+      PYTHONUNBUFFERED: "1"
+      MODEL_TAG: model-s2
+      CANDIDATES: ${{ inputs.tickers }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-ci.txt
+
+      # store imports httpx only, so an empty run skips the heavy install
+      - name: Pick tickers + pull history
+        id: pick
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          pip install "httpx>=0.27" "python-dotenv>=1.0"
+          args=(--pick-list 30 --tickers-out list_tickers.txt --to data/snapshots)
+          [ -n "$CANDIDATES" ] && args+=(--candidates "$CANDIDATES")
+          python -m sentiment store "${args[@]}"
+          echo "any=$([ -s list_tickers.txt ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      # same as daily.yml
+      - name: Install
+        if: steps.pick.outputs.any == 'true'
+        timeout-minutes: 8
+        run: |
+          pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-ci.txt
+
+      # same as daily.yml
+      - name: Cache Hugging Face models
+        if: steps.pick.outputs.any == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ hashFiles('sentiment/models/registry.py') }}
+          restore-keys: hf-
+
+      # same as daily.yml
+      - name: Fingerprint the model release
+        if: steps.pick.outputs.any == 'true'
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "sha=$(gh release view "$MODEL_TAG" --json assets -q '[.assets[]|.name+.updatedAt]|join(",")' | sha1sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+      # same as daily.yml
+      - name: Cache student model
+        if: steps.pick.outputs.any == 'true'
+        id: student
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: models-${{ env.MODEL_TAG }}-${{ steps.rel.outputs.sha }}
+
+      # same as daily.yml
+      - name: Download student model
+        if: steps.pick.outputs.any == 'true' && steps.student.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p models/st-finsent-onnx
+          gh release download "$MODEL_TAG" -p 'meta_*.joblib' -D models
+          gh release download "$MODEL_TAG" -p '*' -D models/st-finsent-onnx --skip-existing
+          rm -f models/st-finsent-onnx/meta_*.joblib
+
+      # batches of 10, each with its own output file, so a timeout or a failed batch keeps the batches already done
+      - name: Analyze
+        if: steps.pick.outputs.any == 'true'
+        timeout-minutes: 30
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          mkdir -p out
+          split -l 10 -d list_tickers.txt batch_
+          for b in batch_*; do
+            python -m sentiment analyze --tickers-file "$b" --no-llm --device cpu \
+              --out "out/$b.json" --run list --no-save || echo "::warning::batch $b failed"
+          done
+
+      - name: Store results
+        if: always() && steps.pick.outputs.any == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          shopt -s nullglob
+          files=(out/*.json)
+          if [ ${#files[@]} -eq 0 ]; then echo "::error::no results"; exit 1; fi
+          python -m sentiment store --results "${files[@]}" --run list

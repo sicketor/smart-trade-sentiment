@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -60,6 +61,8 @@ def _store(args) -> int:
     store = Store.from_env()
     if store is None:
         return 0
+    if args.pick_list is not None:
+        return _pick_list(store, args)
     failed = False
     ids = [i for _, i in reqs]
     try:
@@ -130,6 +133,29 @@ def _store(args) -> int:
     return 1 if failed else 0
 
 
+def _pick_list(store, args) -> int:
+    """Writes the watch-list tickers due for a refresh to --tickers-out (empty file = nothing to do) and pulls their
+    history. Without the file the workflow analyzes nothing, so it is always written."""
+    out = Path(args.tickers_out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("", encoding="utf-8")
+    candidates = [t for t in re.split(r"[\s,]+", args.candidates) if t] if args.candidates else None
+    try:
+        picked, due = store.pick_list(args.pick_list, candidates)
+        if due > len(picked):
+            logging.warning("%d list tickers are due; refreshing the %d oldest", due, len(picked))
+        logging.info("list refresh: %s", " ".join(picked) or "nothing due")
+        if picked:
+            logging.info("pulled %d history rows", store.pull_history(picked, Path(args.to)))
+            out.write_text("\n".join(picked) + "\n", encoding="utf-8")
+    except Exception as e:
+        logging.error("%s: %s", type(e).__name__, e)
+        return 1
+    finally:
+        store.close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="sentiment")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -143,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
     a.add_argument("--items", action="store_true", help="include every scored item")
     a.add_argument("--device", default="auto")
     a.add_argument("--no-save", action="store_true", help="do not append results to data/snapshots/")
-    a.add_argument("--run", default="manual", choices=("main", "refresh", "manual", "ondemand"),
+    a.add_argument("--run", default="manual", choices=("main", "refresh", "manual", "ondemand", "list"),
                    help="run kind recorded in the snapshot (main = the pre-open daily run)")
     a.add_argument("--out", help="write JSON here instead of stdout")
     s = sub.add_parser("store", help="write results / universe / history to the HUB Supabase DB")
@@ -154,13 +180,21 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--requests", help="on-demand requests: TICKER=request_id,... (up to 5)")
     s.add_argument("--mark", choices=("running",), help="mark the --requests as running")
     s.add_argument("--pull-history", action="store_true", help="download the --requests tickers' history")
-    s.add_argument("--to", default="data/snapshots", help="directory for --pull-history")
+    s.add_argument("--to", default="data/snapshots", help="directory for --pull-history / --pick-list")
+    s.add_argument("--pick-list", type=int, metavar="N",
+                   help="write up to N watch-list tickers due for a refresh to --tickers-out and pull their history")
+    s.add_argument("--candidates", help="with --pick-list: use these tickers instead of the watch lists (testing)")
+    s.add_argument("--tickers-out", default="list_tickers.txt", help="output file for --pick-list")
     args = p.parse_args(argv)
     if args.cmd == "store":
         if (args.mark or args.pull_history) and not args.requests:
             s.error("--mark / --pull-history require --requests")
-        if not (args.results or args.universe or args.history or args.requests):
-            s.error("at least one of --results / --universe / --history / --requests is required")
+        if args.pick_list is not None and (args.results or args.universe or args.history or args.requests):
+            s.error("--pick-list runs alone")
+        if args.candidates and args.pick_list is None:
+            s.error("--candidates requires --pick-list")
+        if not (args.results or args.universe or args.history or args.requests or args.pick_list is not None):
+            s.error("at least one of --results / --universe / --history / --requests / --pick-list is required")
         return _store(args)
 
     try:
