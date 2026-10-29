@@ -166,6 +166,16 @@ def normalize(raw: float | None, stats: dict | None,
     return round(100.0 * math.tanh(z / 2), 1), round(z, 3), grade_from_cuts(z, cuts)
 
 
+def grade_bounds(stats: dict | None) -> list[float]:
+    """The six display-score values where the grade steps up, on the same scale as the shown score:
+    100*tanh(cut/2) of the percentile cuts with a norm, the fixed thresholds without one.
+    The display is monotonic in z, so these hold for every ticker that shares the stats."""
+    if not _valid_stats(stats):
+        t1, t2, t3 = config.GRADE_THRESHOLDS
+        return [-t3, -t2, -t1, t1, t2, t3]
+    return [round(100.0 * math.tanh(float(c) / 2), 1) for c in stats["cuts"]]
+
+
 def _weighted(items: list[ScoredItem], as_of: datetime,
               channel: str) -> tuple[float | None, float, float | None, float | None]:
     """(shrunk raw -100..100 or None, Σw, agreement 0..100 or None, positive ratio or None).
@@ -230,6 +240,7 @@ def channel_snapshot(channel: str, items: list[ScoredItem], as_of: datetime,
         raw=None if raw is None else round(raw, 1),
         z=z,
         pos_ratio=pos_ratio,
+        bounds=grade_bounds(stats),
     )
 
 
@@ -273,6 +284,7 @@ def composite(channels: dict[str, ChannelSnapshot], hype: bool,
         raw=raw,
         z=z,
         pos_ratio=mix("pos_ratio", 3),
+        bounds=grade_bounds(stats),
     )
 
 

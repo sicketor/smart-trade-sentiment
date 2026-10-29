@@ -204,3 +204,16 @@ def test_summarize_with_norm_and_history():
     mix = (alpha["news"] * ch["news"].raw + alpha["social"] * ch["social"].raw) / (alpha["news"] + alpha["social"])
     assert comp.raw == pytest.approx(mix, abs=0.05)      # raw mix, not the display scores
     assert comp.z == pytest.approx((comp.raw - 10) / 20, abs=1e-3)
+
+
+def test_grade_bounds_match_the_grades():
+    cuts = [-1.58, -0.89, -0.44, 0.28, 0.93, 1.75]
+    stats = {"mu": 5.0, "sd": 6.0, "cuts": cuts}
+    bounds = aggregate.grade_bounds(stats)
+    assert bounds == sorted(bounds) and len(bounds) == 6
+    # every display score lands in the bound segment that matches its grade
+    for raw in range(-40, 41, 2):
+        display, _, g = aggregate.normalize(float(raw), stats, None)
+        assert sum(display >= b for b in bounds) - 3 == g
+    t1, t2, t3 = config.GRADE_THRESHOLDS
+    assert aggregate.grade_bounds(None) == [-t3, -t2, -t1, t1, t2, t3]

@@ -81,6 +81,7 @@ class ChannelSnapshot:
     raw: float | None = None     # shrunk non-neutral mean -100..+100 before normalization
     z: float | None = None       # (raw - mu) / sd against the blended history / cross-section stats
     pos_ratio: float | None = None   # weight share of positive among non-neutral items (>= 3 of them)
+    bounds: list[float] | None = None  # the 6 display scores where the grade steps up (-3|-2|...|+3), for the gauge
 
 
 @dataclass
