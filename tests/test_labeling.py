@@ -338,3 +338,38 @@ def test_label_lands_on_served_ticker_row(tmp_path, monkeypatch):
     tio.GOLD.unlink()
     st2.label({"id": "x", "ticker": "ZZZ", "cls": 1})   # unknown ticker: fallback
     assert json.loads(tio.GOLD.read_text(encoding="utf-8").splitlines()[0])["ticker"] == "AAA"
+
+
+def test_blind_queue_rules():
+    corpus = [row(i) for i in "abcdef"]
+    base = {"ticker": "AAA", "channel": "news", "skipped": False, "relevant": True}
+    gold = [dict(base, id="a", cls=2), dict(base, id="b", cls=1), dict(base, id="c", cls=0),
+            dict(base, id="d", cls=1), dict(base, id="d", cls=-1, review="blind"),   # already answered
+            dict(base, id="e", cls=1), dict(base, id="f", cls=-1, relevant=False)]
+    teacher = [{"id": "a", "ticker": "AAA", "cls": -1, "pv": 2}, {"id": "a", "ticker": "AAA", "cls": 1},
+               {"id": "b", "ticker": "AAA", "cls": 2, "pv": 2},                      # same direction
+               {"id": "c", "ticker": "AAA", "cls": -1, "pv": 2},                     # Tom is neutral
+               {"id": "d", "ticker": "AAA", "cls": 1, "pv": 2},
+               {"id": "e", "ticker": "AAA", "cls": -1, "relevant": False, "pv": 2},  # Gemini: off target
+               {"id": "f", "ticker": "AAA", "cls": 1, "pv": 2}]                      # Tom: off target
+    q, reviewed = server.blind_queue(corpus, gold, teacher)
+    assert [x[0]["item"]["id"] for x in q] == ["a"] and reviewed == 1
+
+
+def test_blind_mode_hides_both_labels(tmp_path, monkeypatch):
+    corpus, gold, teacher = tmp_path / "c.jsonl", tmp_path / "g.jsonl", tmp_path / "t.jsonl"
+    tio.append_jsonl(corpus, [row("a")])
+    tio.append_jsonl(gold, [{"id": "a", "ticker": "AAA", "channel": "news", "skipped": False, "relevant": True,
+                             "cls": 2, "note": "secret"}])
+    tio.append_jsonl(teacher, [{"id": "a", "ticker": "AAA", "cls": -1, "reason": "secret", "pv": 2}])
+    monkeypatch.setattr(tio, "CORPUS", corpus)
+    monkeypatch.setattr(tio, "GOLD", gold)
+    monkeypatch.setattr(tio, "TEACHER", teacher)
+    st = server.State("tom", review="blind", use_worth=False)
+    res = st.next()
+    assert res["item"]["id"] == "a" and res["review"] == {"mode": "blind"}
+    assert "secret" not in json.dumps(res) and res["progress"]["target"] == 1
+    assert st.label({"id": "a", "ticker": "AAA", "cls": -1})["item"] is None
+    last = list(tio.read_jsonl(gold))[-1]
+    assert last["review"] == "blind" and last["cls"] == -1
+    assert st.undo()["item"]["id"] == "a" and list(tio.read_jsonl(gold))[-1]["cls"] == 2

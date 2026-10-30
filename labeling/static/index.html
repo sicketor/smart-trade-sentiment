@@ -261,14 +261,16 @@ function setProgress(p) {
 
 function fmtCls(c) { return c > 0 ? "+" + c : c < 0 ? "−" + (-c) : "0"; }
 
-function setReviewMode(on) {
-  $("help").innerHTML = on ? "<strong>בדיקה חוזרת:</strong> פריטים שנתת להם כיוון, ו-Gemini חושב שהם לא עוסקים במניה."
+function setReviewMode(mode) {
+  const on = !!mode;
+  $("help").innerHTML = mode === "blind" ? "<strong>תיוג חוזר:</strong> מה ההשפעה הסבירה של הפריט על בעלי המניה הזו?"
+                      : on ? "<strong>בדיקה חוזרת:</strong> פריטים שנתת להם כיוון, ו-Gemini חושב שהם לא עוסקים במניה."
                            : "<strong>שאלה אחת:</strong> מה ההשפעה הסבירה של הפריט על בעלי המניה הזו?";
   $("pVerb").textContent = on ? "נבדקו" : "תויגו";
   $("skip").classList.toggle("hidden", on); $("kSkip").classList.toggle("hidden", on);
-  document.querySelectorAll(".rv-only").forEach(x => x.classList.toggle("hidden", !on));
+  document.querySelectorAll(".rv-only").forEach(x => x.classList.toggle("hidden", mode !== "offtarget"));
   if (on) {
-    $("emptyTitle").textContent = "סיימת את הבדיקה החוזרת";
+    $("emptyTitle").textContent = mode === "blind" ? "סיימת את התיוג החוזר" : "סיימת את הבדיקה החוזרת";
     $("emptyText").textContent = "אין עוד פריטים לבדיקה. אפשר להריץ מחדש את המדידה מול סט הזהב.";
   }
 }
@@ -276,7 +278,7 @@ function setReviewMode(on) {
 function show(res) {
   busy = false;
   review = res.review || null;
-  setReviewMode(!!review);
+  setReviewMode(review && review.mode);
   setProgress(res.progress);
   $("loading").classList.add("hidden");
   cur = res.item;

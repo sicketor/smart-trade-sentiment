@@ -7,6 +7,8 @@ Never exposes teacher labels or model scores (anti-anchoring). Binds to 127.0.0.
 --review offtarget (SPEC §0.6) is the one exception: it re-shows gold items Tom gave a direction that Gemini
 called "not about the stock", with Gemini's reason, so Tom can set them to 0 or keep his label. Each decision
 is a new gold row with "review": "offtarget"; readers take the last row per id.
+--review blind re-shows gold items where Tom and Gemini gave opposite directions, as a normal labeling screen
+that shows neither side's earlier label. Each answer is a new gold row with "review": "blind".
 """
 from __future__ import annotations
 
@@ -162,6 +164,33 @@ def review_queue(corpus_rows, gold_rows, offtarget: dict) -> tuple[list[tuple[di
     return out, len(reviewed)
 
 
+def blind_queue(corpus_rows, gold_rows, teacher_rows) -> tuple[list[tuple[dict, dict, str]], int]:
+    """Gold items to label again, ordered by id, plus how many already were. An item qualifies when Tom's
+    latest label and the newest Gemini label are both relevant with opposite directions. Pure function."""
+    latest: dict[str, dict] = {}
+    reviewed: set[str] = set()
+    for g in gold_rows:
+        latest[g["id"]] = g
+        if g.get("review") == "blind":
+            reviewed.add(g["id"])
+    teacher = {(t["id"], t.get("ticker")): t for t in tio.latest_teacher(teacher_rows)}
+    rows = {}
+    for r in corpus_rows:
+        it = r.get("item") or {}
+        rows.setdefault((it.get("id"), it.get("ticker")), r)
+    out = []
+    for iid in sorted(latest):
+        g = latest[iid]
+        key = (iid, g.get("ticker"))
+        t = teacher.get(key)
+        if (iid in reviewed or g.get("skipped") or not g.get("relevant", True) or not g.get("cls")
+                or t is None or not t.get("relevant", True) or not t.get("cls") or key not in rows):
+            continue
+        if g["cls"] * t["cls"] < 0:
+            out.append((rows[key], g, ""))
+    return out, len(reviewed)
+
+
 def _row_ticker(row: dict) -> str:
     return row["item"].get("ticker") or (row.get("company") or {}).get("ticker", "")
 
@@ -186,8 +215,8 @@ def display_item(row: dict) -> dict:
 class State:
     def __init__(self, labeler: str = "tom", target: int = 500, review: str | None = None,
                  use_worth: bool = True, embed=None, source: str | None = None):
-        if review not in (None, "offtarget"):
-            raise ValueError("review must be 'offtarget'")
+        if review not in (None, "offtarget", "blind"):
+            raise ValueError("review must be 'offtarget' or 'blind'")
         self.source = source           # serve only items from this adapter (e.g. "marketaux")
         self.use_worth = use_worth
         self._embed = embed            # tests inject a fake; default is MiniLM, loaded lazily
@@ -275,6 +304,8 @@ class State:
         return self._offtarget
 
     def queue(self):
+        if self.review == "blind":
+            return blind_queue(self.corpus(), _read_gold(tio.GOLD), tio.read_jsonl(tio.TEACHER))
         return review_queue(self.corpus(), _read_gold(tio.GOLD), self.offtarget())
 
     def next(self, item_row: dict | None = None) -> dict:
@@ -307,6 +338,8 @@ class State:
         if pick is None:
             return {"item": None, "progress": progress, "review": {"mode": self.review}}
         row, g, reason = pick
+        if self.review == "blind":
+            return {"item": display_item(row), "progress": progress, "review": {"mode": self.review}}
         prev = {k: g.get(k) for k in ("cls", "stance", "event", "note")}
         return {"item": display_item(row), "progress": progress,
                 "review": {"mode": self.review, "prev": prev, "gemini_reason": reason}}
@@ -450,7 +483,7 @@ def main(argv=None) -> None:
     ap.add_argument("--labeler", default="tom")
     ap.add_argument("--target", type=int, default=500)
     ap.add_argument("--no-browser", action="store_true")
-    ap.add_argument("--review", choices=["offtarget"])
+    ap.add_argument("--review", choices=["offtarget", "blind"])
     ap.add_argument("--no-worth", action="store_true", help="disable the worth-labeling ranking model")
     ap.add_argument("--source", help="serve only items from this source adapter, e.g. marketaux")
     a = ap.parse_args(argv)
