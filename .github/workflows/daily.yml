@@ -17,7 +17,7 @@ concurrency:
 
 env:
   MODEL_TAG: model-s2
-  SHARDS: 8
+  SHARDS: 12
   SENTIMENT_CACHE: ${{ github.workspace }}/.cache
   ST_BACKEND: onnx
   PYTHONUNBUFFERED: "1"
@@ -29,7 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@v4
 
@@ -101,7 +101,7 @@ jobs:
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
-          python -m sentiment analyze --tickers-file data/universe.txt \
+          python -m sentiment analyze --tickers-file data/universe-stage1.txt \
             --shard ${{ matrix.shard }}/$SHARDS --no-llm --device cpu --out shard.json \
             --run ${{ github.event_name == 'workflow_dispatch' && 'manual' || (github.event.schedule == '5 16 * * *' && 'refresh' || 'main') }}
 
@@ -160,7 +160,7 @@ jobs:
         run: |
           shopt -s nullglob
           files=(shards/shard-*/shard.json)
-          args=(--universe data/universe.txt)
+          args=(--universe data/universe-stage1.txt)
           if [ ${#files[@]} -gt 0 ]; then args+=(--results "${files[@]}"); fi
           args+=(--run ${{ github.event_name == 'workflow_dispatch' && 'manual' || (github.event.schedule == '5 16 * * *' && 'refresh' || 'main') }})
           # a Supabase outage can outlast the per-request backoff (29/10: ~40 min of 504s); the writes are

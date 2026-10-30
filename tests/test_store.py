@@ -548,3 +548,9 @@ def test_daily_universe_covers_training_universe():
     assert len(daily) == len(set(daily)) and 500 <= len(daily) <= 600
     assert {canonical(t) for t in training} <= set(daily)
     assert all(canonical(t) == t and store_mod._TICKER.match(t) for t in daily)
+
+
+def test_stage1_universe_within_daily():
+    stage = cli.read_tickers_file(str(config.ROOT / "data" / "universe-stage1.txt"))
+    daily = cli.read_tickers_file(str(config.ROOT / "data" / "universe-daily.txt"))
+    assert len(stage) == len(set(stage)) == 250 and set(stage) <= set(daily)
