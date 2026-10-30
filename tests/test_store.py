@@ -540,3 +540,11 @@ def test_cli_pick_list_args():
         cli.main(["store", "--pick-list", "5", "--universe", "u.txt"])
     with pytest.raises(SystemExit):
         cli.main(["store", "--candidates", "RKLB", "--universe", "u.txt"])
+
+
+def test_daily_universe_covers_training_universe():
+    daily = cli.read_tickers_file(str(config.ROOT / "data" / "universe-daily.txt"))
+    training = cli.read_tickers_file(str(config.ROOT / "data" / "universe.txt"))
+    assert len(daily) == len(set(daily)) and 500 <= len(daily) <= 600
+    assert {canonical(t) for t in training} <= set(daily)
+    assert all(canonical(t) == t and store_mod._TICKER.match(t) for t in daily)
