@@ -1,8 +1,8 @@
 """A/B the Gemini teacher prompts against Tom's gold labels (SPEC-he.md §0.6).
 
-python -m eval.prompt_ab [--min-bucket 70] [--min-interval 4.5] [--versions 2,3] [--fresh-v1]
+python -m eval.prompt_ab [--min-bucket 70] [--min-interval 4.5] [--versions 2,4] [--fresh-v1]
 
-Scores the prompt versions in --versions (default 2,3; any of 1,2,3) on gold items with bucket >= --min-bucket (never used as few-shot examples).
+Scores the prompt versions in --versions (default 2,3; any of 1,2,3,4) on gold items with bucket >= --min-bucket (never used as few-shot examples).
 v1 reuses the existing teacher labels (all written with v1) unless --fresh-v1. Labels are cached in
 runs/prompt_ab.json, never in the teacher file, so a rerun only calls Gemini for what is missing.
 """
@@ -56,6 +56,11 @@ def report(exs: list[dict], labels: dict[str, dict]) -> dict:
     return out
 
 
+def untouched(exs: list[dict]) -> list[dict]:
+    """Gold never re-reviewed against Gemini: re-reviews moved labels toward it, which favors any Gemini prompt."""
+    return [e for e in exs if "review" not in e["label"]]
+
+
 def run_labeler(labeler, exs: list[dict], have: dict, min_interval: float) -> dict:
     by_ticker = defaultdict(list)
     for e in exs:
@@ -82,8 +87,8 @@ def parse_versions(s: str) -> list[int]:
         vs = sorted({int(x) for x in s.split(",") if x.strip()})
     except ValueError:
         raise SystemExit(f"--versions: not a comma list of ints: {s!r}")
-    if not set(vs) <= {1, 2, 3}:
-        raise SystemExit("--versions: choose from 1,2,3")
+    if not set(vs) <= {1, 2, 3, 4}:
+        raise SystemExit("--versions: choose from 1,2,3,4")
     return vs
 
 
@@ -111,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         shot_ids = {e["id"] for e in json.loads(FEWSHOT.read_text(encoding="utf-8"))}
         assert not shot_ids & {e["label"]["id"] for e in exs}, "few-shot examples leak into the A/B set"
     cache = json.loads(CACHE.read_text(encoding="utf-8")) if CACHE.exists() else {}
-    for k in ("v1", "v2", "v3"):
+    for k in ("v1", "v2", "v3", "v4"):
         cache.setdefault(k, {})
     if 1 in versions and not a.fresh_v1:
         teacher = {}
@@ -142,7 +147,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     both = set.intersection(*(set(cache.get(n, {})) for n in names))
     print(f"n_common={len(both)}")
-    res = {n: report([e for e in exs if e["key"] in both], cache[n]) for n in names}
+    common = [e for e in exs if e["key"] in both]
+    res = {n: report(common, cache[n]) for n in names}
+    res |= {f"{n} untouched": report(untouched(common), cache[n]) for n in names}
     (config.ROOT / "runs" / "prompt_ab_report.json").write_text(json.dumps(res, indent=2), encoding="utf-8")
     for n, rows in res.items():
         for name, r in rows.items():

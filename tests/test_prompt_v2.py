@@ -137,6 +137,15 @@ def test_prompt_ab_parse_versions():
     from eval.prompt_ab import parse_versions
     assert parse_versions("2,3") == [2, 3] and parse_versions("3, 1") == [1, 3]
     assert parse_versions("") == []
-    for bad in ("4", "a,2"):
+    for bad in ("5", "a,2"):
         with pytest.raises(SystemExit):
             parse_versions(bad)
+
+
+def test_prompt_v4_not_active(tmp_path, monkeypatch):
+    lab = llm.GeminiLabeler("K", prompt_version=4)
+    assert lab._template is llm.PROMPT_V4 and lab._schema is llm.SCHEMA and lab._shots is None
+    assert llm.PROMPT_VERSION == 2 and llm.PROMPT is llm.PROMPT_V2
+    text = llm.PROMPT_V4.format(ticker="AAA", company_name="A", examples="", items_json="[]")
+    assert "bare price call" in text and "class action" in text and "comparison with a peer" in text
+    assert "bare price call" not in llm.PROMPT_V2

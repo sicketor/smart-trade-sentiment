@@ -36,6 +36,12 @@ Items:
 # v2 (SPEC §0.6): aligned to Tom's gold labels, where v1 called clear {ticker}-specific items 0.
 _V2_RULES = """Calibration: do not hide behind 0. An item about {ticker} with any clear direction is at least +-1: a deal or acquisition by {ticker}, an analyst action, unusual options bets, a poster who bought shares or calls, a price call or a complaint all have a direction. Use +-2 for major news (large acquisition, strong beat or raise, big contract, probe) and for posts with strong conviction. Keep 0 for items with no direction for {ticker}.
 """
+# v4: v2 plus three rules from Tom's blind re-label of items where he and Gemini gave opposite directions (31/10).
+_V4_RULES = """Do not read these as negative by default:
+- A comparison with a peer ("X vs. Y", "not X, buy Y") or a headline questioning value ("Is {ticker} worth it?", "valuation sets a high bar"): losing the comparison or a high valuation is not itself negative. Use the facts stated about {ticker}; with no negative fact about {ticker}, cls is not negative.
+- A bare price call with no current price ("$XYZ 55 incoming"): you do not know the current price, so do not infer a drop. Without words that state a direction, cls 0 and stance "none".
+- A routine class action, a lawsuit with no ruling, or a settlement already final, with no material cost to {ticker} stated: cls 0. Keep -1 and -2 for new adverse rulings, probes, penalties or a stated material cost.
+"""
 # v3: rubric + price-impact question + about/relevance gate + per-batch kNN examples (shots.py)
 _V3_HEAD = """You are a senior equity analyst labeling text for a stock-sentiment model.
 Target stock: {ticker} ({company_name}).
@@ -60,6 +66,7 @@ Items:
 PROMPT_V3 = _V3_HEAD + "{examples}" + _V3_TAIL
 PROMPT_V1 = _HEAD + _TAIL
 PROMPT_V2 = _HEAD + _V2_RULES + "{examples}" + _TAIL
+PROMPT_V4 = _HEAD + _V2_RULES + _V4_RULES + "{examples}" + _TAIL
 PROMPT_VERSION = 2
 PROMPT = PROMPT_V2
 FEWSHOT = config.ROOT / "sentiment" / "fewshot.json"
@@ -113,7 +120,7 @@ class GeminiLabeler:
         self._key = api_key or os.environ.get("GEMINI_API_KEY") or ""
         self.exhausted = False
         self.prompt_version = prompt_version
-        self._template = {1: PROMPT_V1, 3: PROMPT_V3}.get(prompt_version, PROMPT_V2)
+        self._template = {1: PROMPT_V1, 3: PROMPT_V3, 4: PROMPT_V4}.get(prompt_version, PROMPT_V2)
         self._schema = SCHEMA_V3 if prompt_version == 3 else SCHEMA
         self._examples = "" if prompt_version == 1 else examples_block()
         self._shots = None
