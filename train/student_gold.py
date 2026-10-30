@@ -157,7 +157,7 @@ def oof(rows: list[dict], args) -> dict:
             continue
         held = set(idx)
         train_rows = [r for i, r in enumerate(rows) if i not in held]
-        train_rows += replay_rows(TRAIN_JSONL, args.replay, args.seed)
+        train_rows += replay_rows(_abs(args.replay_data), args.replay, args.seed)
         print(f"fold {k}: train {len(train_rows)} rows, eval {len(idx)} gold", flush=True)
         model = finetune(init, train_rows, **_ft_kwargs(args, device))
         sub = [rows[i] for i in idx]
@@ -215,7 +215,7 @@ def cmd_oof(rows, args) -> None:
 
 def cmd_final(rows, args) -> None:
     out = _abs(args.out)
-    replay = replay_rows(TRAIN_JSONL, args.replay, args.seed)
+    replay = replay_rows(_abs(args.replay_data), args.replay, args.seed)
     device = _device(args)
     print(f"final: {len(rows)} gold + {len(replay)} replay -> {out}", flush=True)
     model = finetune(_abs(args.init), rows + replay, out=out, **_ft_kwargs(args, device))
@@ -236,6 +236,7 @@ def main() -> None:
     ap.add_argument("--accum", type=int, default=2)
     ap.add_argument("--max-len", type=int, default=256)
     ap.add_argument("--replay", type=int, default=2000)
+    ap.add_argument("--replay-data", default=str(TRAIN_JSONL))
     ap.add_argument("--folds", type=int, default=5)
     ap.add_argument("--seed", type=int, default=13)
     ap.add_argument("--out", default="models/st-finsent-s2")
