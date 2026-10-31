@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+import pytest
+
 from sentiment.linking import other_tickers, relevance
 from sentiment.types import Company, RawItem
 
@@ -60,3 +62,52 @@ def test_foreign_exchange_symbol_is_not_a_mention():
     # dual listings still match by name, US exchange tags still match
     assert relevance(mk("Why BlackBerry Stock (TSX:BB) Might Rally"), bb) == 1.0
     assert relevance(mk("Bernstein upgrades (NYSE:AMC) (BMV:AMC) shares"), amc) == 1.0
+
+
+C = Company("C", "CITIGROUP INC", "Citigroup", 831001, aliases=["Citi"], ambiguous=True)
+L = Company("L", "LOEWS CORP", "Loews", 60086, ambiguous=True)
+T = Company("T", "AT&T INC.", "AT&T", 732717, ambiguous=True)
+DE = Company("DE", "DEERE & CO", "Deere", 315189, ambiguous=True, contextual=True)
+MA = Company("MA", "Mastercard Inc", "Mastercard", 1141391, ambiguous=True, contextual=True)
+GM = Company("GM", "General Motors Co", "General Motors", 1467858)
+
+
+@pytest.mark.parametrize("title", ["Drax Group plc (DRX.L) Stock Price, News, Quote & History",
+                                   "Karen L Carnahan Acquires Cintas Stock Options"])
+def test_single_letter_needs_cashtag_or_name(title):
+    assert relevance(mk(title), L) == 0.0
+
+
+def test_single_letter_name_still_links():
+    assert relevance(mk("What Just Happened To T-Mobile Stock?"), T) == 0.0
+    assert relevance(mk("AT&T raises its outlook"), T) == 1.0
+    assert relevance(mk("Citi beats on revenue"), C) == 1.0
+
+
+def test_bare_symbol_boundaries():
+    assert relevance(mk("AXA SA (GM.DE) Stock Price"), GM) == 0.0
+    assert relevance(mk("GM-Hyundai talks"), GM) == 0.0
+    assert relevance(mk("GM raises guidance"), GM) == 1.0
+    assert relevance(mk("GM's new move"), GM) == 1.0
+
+
+@pytest.mark.parametrize("title", ["MA Stock Clocks Best Day In 9 Months", "Why Did MA Stocks Surge?",
+                                   "SGI vs. MA: Which Stock Is the Better Value?", "MA Maintained by Keybanc",
+                                   "Earnings Beat Lifts Mastercard (MA)"])
+def test_contextual_keeps_market_headlines(title):
+    assert relevance(mk(title), MA) > 0
+
+
+@pytest.mark.parametrize("title", ["Boston, MA startup raises funding", "Leeward Investments LLC MA trims position"])
+def test_contextual_drops_other_meanings(title):
+    assert relevance(mk(title), MA) == 0.0
+
+
+def test_name_with_symbol_in_parentheses():
+    assert relevance(mk("Deere (DE) Stock May Be Undervalued"), DE) == 1.0
+    assert relevance(mk("Infineon AG (DE) board change"), DE) == 0.0
+    assert relevance(mk("Gains after Q3 beat (DE:NYSE)"), DE) == 1.0
+
+
+def test_option_quote_is_not_news():
+    assert relevance(mk("GM Nov 2026 56.000 call (GM261127C00056000) Stock Price"), GM) == 0.0

@@ -20,6 +20,7 @@ class Company:
     cik: int
     aliases: list[str] = field(default_factory=list)  # extra names ("Google" for GOOGL)
     ambiguous: bool = False  # ticker is a common word (AI, ALL, F, ON...): needs "$" or name
+    contextual: bool = False  # ambiguous, but a bare ticker counts next to market words ("MA Stock", "vs. HD")
 
 
 @dataclass

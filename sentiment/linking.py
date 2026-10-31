@@ -19,6 +19,23 @@ _FOREIGN = re.compile(
     r"JSE|BMV|BOVESPA|BVMF|SGX|IDX|SET|KLSE|IST|ATSE)\s*:\s*[A-Z0-9][A-Z0-9.\-/]*")
 
 
+# "BX Oct 2026 135.000 put (BX261030P00135000)", "ZS 261030 380.00C (ZS261030C380000)": a quote page, no news in it
+_OPTION_QUOTE = re.compile(r"\b[A-Z]{1,6}\d{6}[CP]\d{5,8}\b")
+_MARKET_WORD = (r"(?i:stocks?|shares?|Q[1-4]|earnings|maintain(?:s|ed)|reiterated|initiated|upgraded|downgraded|"
+                r"price target|DCF|SWOT|falls after|rises after|gears up)\b")
+
+
+def _bare(t: str) -> str:
+    """The symbol as a word of its own: not DRX.L, T-Mobile, O'Reilly, P/E or AT&T; "GM's" still counts."""
+    return rf"(?<![\w.\-'’/&]){re.escape(t)}(?![\w\-/&]|\.\w|['’](?!s\b))"
+
+
+def _in_context(text: str, t: str) -> bool:
+    bare = _bare(t)
+    return bool(re.search(rf"{bare}(?:['’]s|:)?\s+(?:vs\b|or\s+[A-Z]{{2,5}}\b|{_MARKET_WORD})", text)
+                or re.search(rf"\bvs\.?\s+{bare}", text))
+
+
 def _cashtags(s: str) -> set[str]:
     return {m.upper() for m in _CASHTAG.findall(s)}
 
@@ -34,8 +51,16 @@ def _mentions(text: str, company: Company) -> bool:
         return True
     if re.search(rf"\((?:NASDAQ|NYSE|NYSEARCA|AMEX|NYSE American)\s*:\s*{re.escape(t)}\)", text, re.I):
         return True
-    if not company.ambiguous and re.search(rf"\b{re.escape(t)}\b", text):
+    if re.search(rf"\({re.escape(t)}\s*:\s*(?:NASDAQ|NYSE)\)", text, re.I):   # "Colgate gains (CL:NYSE)"
         return True
+    if not company.ambiguous and re.search(_bare(t), text):
+        return True
+    if company.contextual and _in_context(text, t):
+        return True
+    first = re.split(r"[\s\-]", company.short_name)[0]
+    if (len(first) >= 3 and re.search(rf"\({re.escape(t)}\)", text)
+            and re.search(rf"(?<!\w){re.escape(first)}(?!\w)", text, re.I)):
+        return True   # "Deere (DE)", "Bunge Limited (BG)", but not "BAWAG Group AG (BG)"
     names = [company.short_name, *company.aliases, company.name]
     for n in names:
         if n and len(n) >= 3 and re.search(rf"(?<!\w){re.escape(n)}(?!\w)", text, re.I):
@@ -52,6 +77,8 @@ def other_tickers(item: RawItem, company: Company) -> set[str]:
 def relevance(item: RawItem, company: Company) -> float:
     if item.source == "sec":   # fetched by the company's own CIK; titles never name it
         return 1.0
+    if _OPTION_QUOTE.search(item.title):
+        return 0.0
     full = item.title + " " + item.text
     others = other_tickers(item, company)
     if not _mentions(full, company):
