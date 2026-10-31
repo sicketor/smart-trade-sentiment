@@ -21,6 +21,7 @@ class Company:
     aliases: list[str] = field(default_factory=list)  # extra names ("Google" for GOOGL)
     ambiguous: bool = False  # ticker is a common word (AI, ALL, F, ON...): needs "$" or name
     contextual: bool = False  # ambiguous, but a bare ticker counts next to market words ("MA Stock", "vs. HD")
+    weak_name: bool = False  # short_name is an everyday word ("Target", "NEWS"): alone it does not count
 
 
 @dataclass

@@ -22,6 +22,10 @@ ALIASES: dict[str, list[str]] = {
     "C": ["Citi"], "GE": ["GE Aerospace"], "PEG": ["PSEG"], "EL": ["Estée Lauder", "Estee Lauder"],
     "MP": ["MP Materials"], "PH": ["Parker Hannifin"], "PG": ["Procter And Gamble", "P&G"], "CL": ["Colgate"],
     "DD": ["DuPont"], "BG": ["Bunge"], "BR": ["Broadridge"], "TT": ["Trane"], "MU": ["Micron"], "VZ": ["Verizon"],
+    "COO": ["CooperCompanies"], "KDP": ["Keurig"], "USB": ["U.S. Bancorp"], "GEHC": ["GE HealthCare"],
+    "MSTR": ["MicroStrategy"], "XYZ": ["Block Inc"], "DAL": ["Delta Air"], "MPC": ["Marathon Petroleum"],
+    "CCI": ["Crown Castle"], "APD": ["Air Products"], "DRI": ["Darden"], "NSC": ["Norfolk Southern"],
+    "MLM": ["Martin Marietta"], "FIX": ["Comfort Systems"], "AMP": ["Ameriprise"], "ATO": ["Atmos"],
     "ICE": ["Intercontinental Exchange", "NYSE Parent", "ICE (ICE)", "ICE First Look"],
 }
 
@@ -39,6 +43,15 @@ CONTEXTUAL = {
     "BA", "BB", "BG", "BR", "CB", "CF", "CI", "CL", "DD", "DE", "ED", "EL", "ES", "EW", "FE", "GE", "GL", "GS", "HD",
     "IP", "IR", "MA", "MO", "MP", "MS", "PG", "PH", "PM", "RF", "RL", "SW", "TT", "WM",
     "DOC", "FAST", "ICE", "NUE", "PEG",
+    "AFL", "AME", "AMP", "APD", "ATO", "BALL", "CCI", "CMS", "CNC", "COO", "COP", "CRM", "DAL", "DOW", "DRI", "ECHO",
+    "ELV", "ESS", "ETN", "FIS", "FIVE", "FIX", "FLEX", "FOX", "GIS", "HAL", "HST", "IEX", "KDP", "MET", "MLM", "MPC",
+    "MSI", "MTB", "NSC", "NWS", "PGR", "PNW", "PSA", "REG", "SNAP", "SRE", "STT", "TXT", "USB", "VST", "WAT", "WEC",
+}
+
+# Cleaned names that are everyday words ("price target", "stock news"): the name alone proves nothing.
+WEAK_NAMES = {
+    "Affirm", "BALL", "Block", "Booking", "Carnival", "Celsius", "Coherent", "DOW", "Dover", "Everest", "FLEX", "Fox",
+    "Lucid", "MSCI", "NEWS", "Nasdaq", "Progressive", "Snap", "Strategy", "Target", "Toast", "Upstart", "Waters",
 }
 
 _SUFFIX = re.compile(
@@ -49,7 +62,7 @@ _SUFFIX = re.compile(
 
 
 def clean_name(sec_title: str) -> str:
-    s = re.sub(r"\s/\s?\w+/?\s*$", " ", sec_title)   # "MP Materials Corp. / DE", "INTERNATIONAL PAPER CO /NEW/"
+    s = re.sub(r"\s[/\\]\s?\w+[/\\]?\s*$", " ", sec_title)   # "MP Materials Corp. / DE", "US Bancorp \DE\"
     s = _SUFFIX.sub(" ", s)
     s = re.sub(r"\s+", " ", s).strip(" .-&")
     out = []
@@ -85,7 +98,8 @@ def load_companies(http: Http) -> dict[str, Company]:
         short = clean_name(name)
         aliases = list(ALIASES.get(t, []))
         out[t] = Company(ticker=t, name=name, short_name=short, cik=int(row["cik_str"]),
-                         aliases=aliases, ambiguous=t in AMBIGUOUS or t in CONTEXTUAL, contextual=t in CONTEXTUAL)
+                         aliases=aliases, ambiguous=t in AMBIGUOUS or t in CONTEXTUAL, contextual=t in CONTEXTUAL,
+                         weak_name=short in WEAK_NAMES)
     return out
 
 

@@ -25,6 +25,18 @@ _MARKET_WORD = (r"(?i:stocks?|shares?|Q[1-4]|earnings|maintain(?:s|ed)|reiterate
                 r"price target|DCF|SWOT|falls after|rises after|gears up)\b")
 
 
+# Another company whose name contains ours.
+_OTHER_NAME = re.compile(r"Portland General Electric|Omega Flex|Shoe Carnival|Lucid Diagnostics", re.I)
+
+# What proves that an everyday-word name ("Target", "Block") is the company.
+_WEAK_SUFFIX = r"(?:Holdings|Group|Inc|Corp|Corporation|Ltd)\b"
+_WEAK_VERB = (r"(?i:reports?|announces?|falls?|rises?|drops?|sinks?|slides?|surges?|jumps?|climbs?|beats?|misses|"
+              r"pauses?|skipped|raises?|cuts|lowers?|posts?|bulls|investors|director|ceo|cfo)\b")
+_NOT_COMPANY = r"(?!\s+(?i:market|exchange|futures)\b)"
+# Also an index or an exchange: "Dow rises 200 points", "Nasdaq stocks": verbs and plurals prove nothing here.
+_INDEX_NAMES = {"DOW", "Nasdaq", "MSCI"}
+
+
 def _bare(t: str) -> str:
     """The symbol as a word of its own: not DRX.L, T-Mobile, O'Reilly, P/E or AT&T; "GM's" still counts."""
     return rf"(?<![\w.\-'’/&]){re.escape(t)}(?![\w\-/&]|\.\w|['’](?!s\b))"
@@ -34,6 +46,15 @@ def _in_context(text: str, t: str) -> bool:
     bare = _bare(t)
     return bool(re.search(rf"{bare}(?:['’]s|:)?\s+(?:vs\b|or\s+[A-Z]{{2,5}}\b|{_MARKET_WORD})", text)
                 or re.search(rf"\bvs\.?\s+{bare}", text))
+
+
+def _weak_name_proof(text: str, short: str) -> bool:
+    """ "Target Stock", "Lucid Group", "Snap Sinks 4%", "Costco vs. Target"; never "price target" or "stock news"."""
+    name = rf"(?<![\w\-])(?<![Pp]rice\s)(?:{re.escape(short)}|{re.escape(short.title())})"
+    if short in _INDEX_NAMES:
+        return bool(re.search(rf"{name}(?:['’]s)?\s+(?:{_WEAK_SUFFIX}|(?i:stock|earnings|Q[1-4])\b{_NOT_COMPANY})", text))
+    proof = rf"(?:{_MARKET_WORD}|{_WEAK_SUFFIX}|{_WEAK_VERB}|vs\b){_NOT_COMPANY}"
+    return bool(re.search(rf"{name}(?:['’]s)?\s+{proof}", text) or re.search(rf"\bvs\.?\s+{name}", text))
 
 
 def _cashtags(s: str) -> set[str]:
@@ -46,7 +67,7 @@ def _variants(ticker: str) -> set[str]:
 
 def _mentions(text: str, company: Company) -> bool:
     t = company.ticker
-    text = _FOREIGN.sub(" ", text)
+    text = _OTHER_NAME.sub(" ", _FOREIGN.sub(" ", text))
     if t in _cashtags(text):
         return True
     if re.search(rf"\((?:NASDAQ|NYSE|NYSEARCA|AMEX|NYSE American)\s*:\s*{re.escape(t)}\)", text, re.I):
@@ -61,7 +82,9 @@ def _mentions(text: str, company: Company) -> bool:
     if (len(first) >= 3 and re.search(rf"\({re.escape(t)}\)", text)
             and re.search(rf"(?<!\w){re.escape(first)}(?!\w)", text, re.I)):
         return True   # "Deere (DE)", "Bunge Limited (BG)", but not "BAWAG Group AG (BG)"
-    names = [company.short_name, *company.aliases, company.name]
+    if company.weak_name and _weak_name_proof(text, company.short_name):
+        return True
+    names = [*([] if company.weak_name else [company.short_name]), *company.aliases, company.name]
     for n in names:
         if n and len(n) >= 3 and re.search(rf"(?<!\w){re.escape(n)}(?!\w)", text, re.I):
             return True

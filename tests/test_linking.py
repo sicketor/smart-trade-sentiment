@@ -111,3 +111,58 @@ def test_name_with_symbol_in_parentheses():
 
 def test_option_quote_is_not_news():
     assert relevance(mk("GM Nov 2026 56.000 call (GM261127C00056000) Stock Price"), GM) == 0.0
+
+
+TGT = Company("TGT", "TARGET CORP", "Target", 27419, weak_name=True)
+NWS = Company("NWS", "NEWS CORP", "NEWS", 1564708, ambiguous=True, contextual=True, weak_name=True)
+GE = Company("GE", "General Electric Co", "General Electric", 40545, ambiguous=True, contextual=True)
+
+
+@pytest.mark.parametrize("title", ["Goldman Sachs cuts Kospi target by 25%", "Price Target Raised to $90",
+                                   "Plug Power (PLUG) stock price, news, quote"])
+def test_weak_name_alone_does_not_link(title):
+    assert relevance(mk(title), TGT) == 0.0
+    assert relevance(mk(title), NWS) == 0.0
+
+
+@pytest.mark.parametrize("title", ["How Much Could You Lose In Target Stock?", "Target Corp cuts its outlook",
+                                   "Target's Q3 Earnings Miss", "Target (TGT) lowers guidance", "TGT slides"])
+def test_weak_name_links_with_proof(title):
+    assert relevance(mk(title), TGT) > 0
+
+
+LCID = Company("LCID", "Lucid Group, Inc.", "Lucid", 1811210, weak_name=True)
+SNAP = Company("SNAP", "Snap Inc", "Snap", 1564408, ambiguous=True, contextual=True, weak_name=True)
+FLEX = Company("FLEX", "FLEX LTD.", "FLEX", 866374, ambiguous=True, contextual=True, weak_name=True)
+DOW = Company("DOW", "Dow Inc.", "DOW", 1751788, ambiguous=True, contextual=True, weak_name=True)
+NDAQ = Company("NDAQ", "Nasdaq, Inc.", "Nasdaq", 1120193, weak_name=True)
+
+
+@pytest.mark.parametrize("company,title", [(LCID, "Lucid Group Stock Short Interest Rises"),
+                                           (LCID, "Lucid vs. Ferrari: Which Car Stock?"),
+                                           (TGT, "Costco vs. Target: Which Retailer?"),
+                                           (SNAP, "Reddit Slides 5%; Snap Sinks 4%"),
+                                           (FLEX, "Flex Q2 Earnings Call Highlights"),
+                                           (FLEX, "Flex shares rise on strong earnings"),
+                                           (DOW, "Dow Inc raises its dividend"),
+                                           (NDAQ, "Nasdaq Q3 earnings beat")])
+def test_weak_name_real_headlines(company, title):
+    assert relevance(mk(title), company) > 0
+
+
+@pytest.mark.parametrize("company,title", [(SNAP, "Sensex, Nifty Snap 4-day Losing Streak"),
+                                           (SNAP, "Indian shares snap losing run"),
+                                           (FLEX, "Sales rose 6%, but profit fell 36% at Omega Flex"),
+                                           (FLEX, "India's flex workspace market likely to double"),
+                                           (DOW, "Dow rises 200 points as oil falls"),
+                                           (DOW, "Dow Jones Biggest Decliners"),
+                                           (NDAQ, "Nasdaq falls as chips slide"),
+                                           (NDAQ, "SVRN Faces Nasdaq Delisting"),
+                                           (TGT, "Citi's Price Target Falls")])
+def test_weak_name_noise(company, title):
+    assert relevance(mk(title), company) == 0.0
+
+
+def test_other_company_with_our_name():
+    assert relevance(mk("Portland General Electric (POR) Misses Q3 Earnings Estimates"), GE) == 0.0
+    assert relevance(mk("General Electric raises guidance"), GE) == 1.0
