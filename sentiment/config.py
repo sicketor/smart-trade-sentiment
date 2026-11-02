@@ -37,6 +37,7 @@ REDDIT_SUBS = ("wallstreetbets", "stocks", "investing", "options", "StockMarket"
 
 # SPEC §8
 HALF_LIFE_HOURS = {"news": 24.0, "filings": 72.0, "social": 6.0}
+WEEKEND_DECAY = 0.25         # a Saturday or Sunday hour ages an item this much
 SHRINK_K = {"news": 3.0, "filings": 2.0, "social": 5.0}
 CHANNEL_WEIGHTS = {"news": 0.45, "filings": 0.25, "social": 0.30}
 MIN_EFFECTIVE_ITEMS = 1.0   # below this a channel shows "low data"

@@ -8,7 +8,7 @@ import logging
 import math
 import re
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
@@ -75,11 +75,27 @@ def price_move_only(si: ScoredItem) -> bool:
     return PRICE_MOVE_RE.search(si.item.title or "") is not None
 
 
+def decay_hours(published_at: datetime, as_of: datetime) -> float:
+    """Item age for the decay: Saturday and Sunday (UTC) hours count less, since news barely flows then."""
+    start, end = published_at.astimezone(timezone.utc), as_of.astimezone(timezone.utc)
+    if end <= start:
+        return 0.0
+    hours = (end - start).total_seconds() / 3600
+    day = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    while day < end:
+        next_day = day + timedelta(days=1)
+        if day.weekday() >= 5:
+            overlap = (min(end, next_day) - max(start, day)).total_seconds() / 3600
+            hours -= max(0.0, overlap) * (1 - config.WEEKEND_DECAY)
+        day = next_day
+    return hours
+
+
 def item_weight(si: ScoredItem, as_of: datetime) -> float:
     """w_i = source · relevance² · novelty² · confidence · author · 2^(−Δt/halflife); 0 for price-move-only."""
     if price_move_only(si):
         return 0.0
-    hours = max(0.0, (as_of - si.item.published_at).total_seconds() / 3600)
+    hours = decay_hours(si.item.published_at, as_of)
     decay = 2 ** (-hours / config.HALF_LIFE_HOURS[si.item.channel])
     return (source_weight(si) * si.relevance ** 2 * si.novelty ** 2 * si.confidence
             * author_weight(si) * decay)
