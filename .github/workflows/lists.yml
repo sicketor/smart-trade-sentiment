@@ -5,7 +5,8 @@ name: list-refresh
 
 on:
   schedule:
-    - cron: "30 13-20 * * 1-5"   # GitHub often starts scheduled runs 30-50 minutes late
+    # US winter hours; cron is UTC only, so use 13-20 from the US clock change in March.
+    - cron: "30 14-21 * * 1-5"   # GitHub often starts scheduled runs 30-50 minutes late
   workflow_dispatch:
     inputs:
       tickers:
