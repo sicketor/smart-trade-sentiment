@@ -66,6 +66,17 @@ def test_404_falls_to_next_model(monkeypatch):
     assert "id1" in out and config.GEMINI_MODELS[1] in urls[1]
 
 
+def test_pinned_model_no_fallback(monkeypatch):
+    calls = []
+
+    def post(url, timeout=None, **kw):
+        calls.append((url, timeout))
+        return resp(404)
+    monkeypatch.setattr(llm.httpx, "post", post)
+    out = GeminiLabeler("K", models=("gemini-pro-x",), timeout=180).label(CO, [item(1)])
+    assert out == {} and calls == [(llm.URL.format(model="gemini-pro-x"), 180)]
+
+
 def test_all_429_exhausted_partial(monkeypatch):
     monkeypatch.setattr(config, "GEMINI_BATCH", 2)
     calls = []

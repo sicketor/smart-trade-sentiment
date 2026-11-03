@@ -67,6 +67,18 @@ def test_agreement():
     assert agreement([], []) == {"n": 0}
 
 
+def test_paired_fixed_broke():
+    from eval.prompt_ab import paired
+    tom = [1, 1, -1, 0, 2]
+    exs = [{"key": str(i), "label": {"cls": c}} for i, c in enumerate(tom)]
+    base = {str(i): {"cls": c} for i, c in enumerate([1, 0, 0, 0, 1])}
+    new = {str(i): {"cls": c} for i, c in enumerate([1, 1, -1, 1, 1])}
+    r = paired(exs, base, new)
+    assert (r["n"], r["fixed"], r["broke"]) == (5, 2, 1)
+    assert r["f1_diff"] > 0 and r["ci"][0] <= r["f1_diff"] <= r["ci"][1]
+    assert paired([], base, new) == {"n": 0}
+
+
 class _FakeShots:
     def __init__(self):
         self.batches = []

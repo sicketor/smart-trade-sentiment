@@ -111,7 +111,11 @@ SCHEMA_V3 = {
 
 
 class GeminiLabeler:
-    def __init__(self, api_key: str | None = None, prompt_version: int = PROMPT_VERSION, shots=None):
+    def __init__(self, api_key: str | None = None, prompt_version: int = PROMPT_VERSION, shots=None,
+                 models: tuple[str, ...] | None = None, timeout: float = 60):
+        """models: fallback chain to try in order (default config.GEMINI_MODELS); eval.prompt_ab pins one."""
+        self._models = tuple(models or config.GEMINI_MODELS)
+        self._timeout = timeout
         try:
             from dotenv import load_dotenv
             load_dotenv()
@@ -140,10 +144,10 @@ class GeminiLabeler:
         body = {"contents": [{"role": "user", "parts": [{"text": prompt}]}],
                 "generationConfig": {"temperature": 0, "responseMimeType": "application/json",
                                      "responseSchema": schema or SCHEMA}}
-        for model in config.GEMINI_MODELS:
+        for model in self._models:
             try:
                 r = httpx.post(URL.format(model=model), headers={"x-goog-api-key": self._key},
-                               json=body, timeout=60)
+                               json=body, timeout=self._timeout)
             except httpx.HTTPError as e:
                 log.warning("gemini %s request failed: %s", model, type(e).__name__)
                 statuses.append(0)
