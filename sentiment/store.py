@@ -136,13 +136,7 @@ class Store:
 
     @classmethod
     def from_env(cls) -> "Store | None":
-        env = config.ROOT / ".env"
-        if env.exists():
-            try:
-                from dotenv import load_dotenv
-                load_dotenv(env, override=False)
-            except ImportError:
-                pass
+        config.load_env()
         url = (os.environ.get("SUPABASE_URL") or "").strip()
         key = (os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or "").strip()
         if not url or not key:

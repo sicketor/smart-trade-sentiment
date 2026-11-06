@@ -116,11 +116,7 @@ class GeminiLabeler:
         """models: fallback chain to try in order (default config.GEMINI_MODELS); eval.prompt_ab pins one."""
         self._models = tuple(models or config.GEMINI_MODELS)
         self._timeout = timeout
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
-        except ImportError:
-            pass
+        config.load_env()
         self._key = api_key or os.environ.get("GEMINI_API_KEY") or ""
         self.exhausted = False
         self.prompt_version = prompt_version
@@ -220,11 +216,7 @@ class OpenAICompatLabeler(GeminiLabeler):
         cfg = config.LLM_PROVIDERS.get(provider)
         if cfg is None:
             raise ValueError(f"unknown provider: {provider!r}")
-        try:
-            from dotenv import load_dotenv
-            load_dotenv(config.ROOT / ".env")
-        except ImportError:
-            pass
+        config.load_env()
         key = api_key or os.environ.get(cfg["key_env"]) or ""
         super().__init__(api_key=key, prompt_version=prompt_version)
         self._key = key  # never fall back to GEMINI_API_KEY

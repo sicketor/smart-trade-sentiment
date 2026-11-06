@@ -5,6 +5,20 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+def load_env() -> None:
+    """Load ROOT/.env, then the shared SMART TRADE .env.shared found by walking up. Never overrides a set variable,
+    so the shell wins over .env, and .env wins over .env.shared. No python-dotenv → no-op."""
+    try:
+        from dotenv import load_dotenv  # imported at call time: tests patch dotenv.load_dotenv
+    except ImportError:
+        return
+    load_dotenv(ROOT / ".env", override=False)
+    for d in (ROOT, *ROOT.parents):
+        if (d / ".env.shared").is_file():
+            load_dotenv(d / ".env.shared", override=False)
+            break
+
+
 CACHE_DIR = Path(os.environ.get("SENTIMENT_CACHE", ROOT / ".cache"))
 MODELS_DIR = ROOT / "models"
 LEXICON_DIR = ROOT / "data" / "lexicons"

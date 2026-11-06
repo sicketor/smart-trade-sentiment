@@ -193,9 +193,8 @@ def main(argv: list[str] | None = None) -> int:
     a = ap.parse_args(argv)
 
     if a.cmd == "harvest":
-        from dotenv import load_dotenv
         from sentiment.http import Http
-        load_dotenv(config.ROOT / ".env")
+        config.load_env()
         key = os.environ.get("MARKETAUX_API_KEY")
         if not key:
             print("MARKETAUX_API_KEY missing")

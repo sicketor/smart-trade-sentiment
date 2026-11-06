@@ -172,11 +172,7 @@ def main(argv: list[str] | None = None) -> int:
         cache[p] = run_labeler(lab, exs, cache.setdefault(p, {}), a.min_interval)
         CACHE.write_text(json.dumps(cache), encoding="utf-8")
     for m in models:
-        try:
-            from dotenv import load_dotenv
-            load_dotenv()
-        except ImportError:
-            pass
+        config.load_env()
         key = os.environ.get(a.key_env)
         if not key:  # never fall back to the free GEMINI_API_KEY behind the caller's back
             print(f"{a.key_env} missing")
