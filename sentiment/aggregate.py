@@ -26,11 +26,25 @@ CUT_PERCENTILES = (5, 15, 35, 65, 85, 95)
 # the move is the market's reaction, so they are dropped unless a catalyst tag explains it.
 _MOVE_VERB = (r"rise[sn]?|rose|jump(s|ed)?|soar(s|ed)?|surge[sd]?|climb(s|ed)?|rall(y|ies|ied)|gain(s|ed)?"
               r"|fall(s|en)?|fell|drop(s|ped)?|slide[sd]?|slid|sink(s)?|sank|tumble[sd]?|plunge[sd]?"
-              r"|slump(s|ed)?|dip(s|ped)?|(trade|trading|move|moving) (higher|lower)|(is|are) (up|down)")
+              r"|slump(s|ed)?|dip(s|ped)?|skyrocket(s|ed)?|plummet(s|ed)?|tank(s|ed)?|slip(s|ped)?|spike[sd]?"
+              r"|(trade|trading|move|moving) (higher|lower)|(is|are) (up|down)")
 _MOVE_WHEN = (r"\d+(\.\d+)?\s?%|\btoday\b|\bthis week\b|\bon (monday|tuesday|wednesday|thursday|friday)\b"
               r"|\bpremarket\b|\bafter[- ]hours\b")
+_PCT = r"\d+(\.\d+)?\s?%"
+# a business number moving ("revenue jumps 20%") is news, not a price move
+_NOT_PRICE = (r"(?!.*\b(revenue|sales|earnings|profit|eps|income|dividend|guidance|deliveries|orders|margin"
+              r"|bookings|users|subscribers|shipments|traffic|volume)\b)")
 PRICE_MOVE_RE = re.compile(
     rf"\b(shares?|stocks?)\b.{{0,40}}\b({_MOVE_VERB})\b.{{0,30}}({_MOVE_WHEN})"
+    # "closes at $291.53, down 10.43%", "Closed Down by 3.80% on Nov 5"
+    rf"|\b(clos(e|es|ed|ing)|end(s|ed)?|open(s|ed)?|finish(es|ed)?|settle[sd]?)\b.{{0,40}}"
+    rf"\b(up|down|higher|lower)\b.{{0,12}}{_PCT}"
+    # "Nike stock at EUR 34.83, down 1.50% premarket"
+    rf"|\b(stock|shares)\b.{{0,15}}\bat\s+(\$|usd\b|eur\b|€|gbp\b|£)\s?\d[\d,.]*.{{0,15}}\b(up|down)\b.{{0,10}}{_PCT}"
+    # "Broadcom drops 10% amid broad chip selloff": up to 4 name words, then the move and a percentage
+    rf"|^{_NOT_PRICE}\s*[\w.&'\-]+(\s+[\w.&'\-]+){{0,3}}\s+({_MOVE_VERB})\s+(by\s+)?{_PCT}"
+    # StockStory: "... shares skyrocket, what you need to know"
+    r"|\b(stock|shares)\b.{0,25},\s*what you need to know"
     r"|\bwhy\b.{0,60}\b(stock|shares)\b.{0,30}\b(is|are|was|were|has|have)\b.{0,20}"
     r"\b(up|down|higher|lower|soar\w*|sink\w*|fall\w*|ris\w*|jump\w*|plung\w*|surg\w*|tumbl\w*|crash\w*"
     r"|rall\w*|slid\w*|climb\w*)\b"

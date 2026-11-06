@@ -108,6 +108,20 @@ STATS = {"mu": 5.0, "sd": 10.0, "n": 100, "cuts": [-1.6, -1.0, -0.4, 0.4, 1.0, 1
     ("Why AMD Stock Is Down Today", None, True),
     ("Nvidia shares jump 5% after earnings beat", ["EARNINGS_BEAT"], False),
     ("Apple announces new iPhone", None, False),
+    # missed before 7/11/2026 (stock-grade gap check)
+    ("AVGO stock Analysis closes at $291.53, down 10.43%", None, True),
+    ("Broadcom drops 10% amid broad chip selloff (AVGO:NASDAQ)", None, True),
+    ("Amgen Inc Stock (AMGN) Closed Down by 3.80% on Nov 5: What Investors Need To Know", None, True),
+    ("Nike stock at EUR 34.83, down 1.50% premarket", None, True),
+    ("Allegro MicroSystems, IPG Photonics, Lattice Semiconductor, Entegris, and Broadcom shares skyrocket, "
+     "what you need to know", None, True),
+    # must stay: business numbers and analysis, not the price
+    ("Nvidia revenue jumps 20% on AI demand", None, False),
+    ("Tesla deliveries fall 8% in third quarter", None, False),
+    ("Broadcom's AI Revenue Is Exploding. Here's What Investors Should Watch Next.", None, False),
+    ("Nike Is Down 36% This Year. Can Its Free Cash Flow Still Cover the Dividend?", None, False),
+    ("Guggenheim Adjusts Price Target on Amgen to $435 From $378", None, False),
+    ("Amcor raises dividend by 1.5% to $0.66", None, False),
 ])
 def test_price_move_only(title, events, expected):
     item = si("news", 0.5, 0, title=title, events=events)
