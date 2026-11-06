@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>דירוג מניות</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: light;
+  --canvas:#f5f9fa; --surface:#fff; --surface-alt:#eaf4f6; --border:#d6e6ea; --border-strong:#b5d0d7;
+  --text-strong:#06343c; --text:#18323a; --text-2:#46636b; --text-muted:#536a71;
+  --action:#0b6a78; --action-hover:#034a55; --accent:#087080; --accent-soft:#e0f2f6; --focus:#138ba3;
+  --gain:#13733a; --gain-soft:#e6f6ec; --loss:#b92d39; --loss-soft:#fce9eb; --neutral:#46636b; --neutral-soft:#eaf4f6;
+  --on-solid:#fff;
+  --shadow:0 1px 2px rgb(3 74 85/.04), 0 6px 16px rgb(3 74 85/.06);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --canvas:#061a1f; --surface:#0b252b; --surface-alt:#10313a; --border:#1c424b; --border-strong:#2a5864;
+    --text-strong:#eaf6f8; --text:#cfe3e7; --text-2:#9fbcc3; --text-muted:#8fa9b0;
+    --action:#0b6a78; --action-hover:#0e7f8f; --accent:#5cc3da; --accent-soft:rgb(92 195 218/.12); --focus:#5cc3da;
+    --gain:#4ade80; --gain-soft:rgb(74 222 128/.12); --loss:#f07a85; --loss-soft:rgb(240 122 133/.12);
+    --neutral:#9fbcc3; --neutral-soft:#10313a;
+    --on-solid:#06343c;
+    --shadow:none;
+  }
+}
+* { box-sizing: border-box; margin: 0; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  font-family: 'Heebo', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  background: var(--canvas); color: var(--text); font-size: 16px; line-height: 1.5;
+  min-height: 100vh; overflow-x: hidden;
+}
+button, input, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.wrap { max-width: 48rem; margin-inline: auto; padding: 12px 16px; display: grid; gap: 12px; }
+@media (min-width: 40rem) { .wrap { padding: 16px 24px; } }
+.help { color: var(--text-2); font-size: 14px; }
+.help strong { color: var(--text-strong); font-weight: 600; }
+.progress { display: grid; gap: 6px; }
+.progress-row { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 14px; color: var(--text-2); }
+.progress-row b { color: var(--text-strong); font-weight: 600; }
+.num { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; display: inline-block; }
+.bar { height: 6px; background: var(--surface-alt); border-radius: 8px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--action); border-radius: 8px; transition: width .2s ease-out; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px; box-shadow: var(--shadow); display: grid; gap: 12px; }
+@media (min-width: 40rem) { .card { padding: 16px 20px; } }
+.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.ticker { font-weight: 700; color: var(--text-strong); font-size: 24px; direction: ltr; unicode-bidi: isolate; letter-spacing: -.01em; }
+.co { color: var(--text-2); font-weight: 500; }
+.asof { color: var(--text-muted); font-size: 14px; margin-inline-start: auto; }
+details.ch { border-top: 1px solid var(--border); padding-top: 12px; }
+details.ch > summary { cursor: pointer; font-weight: 600; color: var(--text-strong); display: flex; gap: 8px; align-items: center; list-style: none; min-height: 32px; }
+details.ch > summary::-webkit-details-marker { display: none; }
+details.ch > summary::before { content: "▸"; color: var(--text-muted); transition: transform .15s ease-out; display: inline-block; }
+details.ch[open] > summary::before { transform: rotate(90deg); }
+[dir=rtl] details.ch > summary::before { transform: scaleX(-1); }
+[dir=rtl] details.ch[open] > summary::before { transform: rotate(90deg); }
+.count { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
+.items { display: grid; gap: 0; margin-top: 8px; }
+.it { display: grid; gap: 4px; padding-block: 10px; border-bottom: 1px solid var(--border); }
+.it:last-child { border-bottom: 0; }
+.it-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--text-muted); }
+.it-meta .pub { color: var(--text-2); font-weight: 500; overflow-wrap: anywhere; }
+.it-meta .fresh { color: var(--accent); font-weight: 600; }
+.it-title { font-weight: 600; color: var(--text-strong); line-height: 1.4; overflow-wrap: anywhere; }
+.it-text { color: var(--text); font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; }
+.it-text.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.it-actions { display: flex; gap: 16px; font-size: 13px; }
+.lnk { color: var(--accent); font-weight: 500; text-decoration: none; background: none; border: 0; padding: 0; cursor: pointer; }
+.lnk:hover { text-decoration: underline; }
+.empty-ch { color: var(--text-muted); font-size: 14px; padding-block: 8px; }
+
+.panel { position: sticky; bottom: 0; z-index: 2; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; padding: 12px 16px; box-shadow: 0 -4px 16px rgb(3 74 85/.08); display: grid; gap: 10px; }
+@media (max-width: 40rem), (max-height: 40rem) { .panel { position: static; box-shadow: var(--shadow); } .legend { display: none; } }
+fieldset { border: 0; padding: 0; min-width: 0; display: grid; gap: 6px; }
+legend { font-size: 14px; font-weight: 600; color: var(--text-strong); padding: 0; margin-bottom: 4px; }
+.grades { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+@media (max-width: 30rem) { .grades { grid-template-columns: repeat(4, 1fr); } }
+.opt { position: relative; min-width: 0; }
+.opt input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.opt span { display: grid; place-items: center; text-align: center; min-height: 56px; padding: 4px 2px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); font-size: 12px; font-weight: 500; line-height: 1.25; transition: background-color .15s ease-out, border-color .15s ease-out, color .15s ease-out; }
+.opt span b { font-size: 18px; font-weight: 700; direction: ltr; unicode-bidi: isolate; }
+.opt:hover span { background: var(--surface-alt); }
+.opt input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 2px; }
+.c-neg span b { color: var(--loss); } .c-pos span b { color: var(--gain); } .c-zero span b { color: var(--neutral); }
+.c-neg input:checked + span { background: var(--loss); border-color: var(--loss); color: var(--on-solid); }
+.c-pos input:checked + span { background: var(--gain); border-color: var(--gain); color: var(--on-solid); }
+.c-zero input:checked + span { background: var(--neutral); border-color: var(--neutral); color: var(--on-solid); }
+.opt input:checked + span b { color: inherit; }
+textarea { width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 8px; background: var(--surface); resize: vertical; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn { min-height: 40px; padding: 8px 20px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--surface); font-weight: 500; cursor: pointer; transition: background-color .15s ease-out, transform .15s ease-out; }
+.btn:hover { background: var(--surface-alt); }
+.btn:active { transform: scale(.98); }
+.btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.btn.primary { background: var(--action); border-color: var(--action); color: #fff; font-weight: 600; flex: 1 1 8rem; }
+.btn.primary:hover:not(:disabled) { background: var(--action-hover); }
+@media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } .bar > i { transition: none; } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--text-muted); }
+kbd { font-family: inherit; direction: ltr; unicode-bidi: isolate; display: inline-block; min-width: 24px; text-align: center; padding: 0 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; background: var(--surface); color: var(--text-strong); font-size: 12px; font-weight: 600; }
+.state { text-align: center; padding: 48px 16px; color: var(--text-2); display: grid; gap: 8px; justify-items: center; }
+.state h2 { color: var(--text-strong); font-size: 20px; font-weight: 600; }
+.err { color: var(--loss); font-size: 14px; }
+.err:empty { display: none; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <p class="help">דרגו את <strong>מצב הרוח הכללי סביב המניה עכשיו</strong>, כפי שמשקיעים שקוראים את הפריטים האלה היו מרגישים. פריטים מהשעות האחרונות חשובים יותר מפריטים מלפני כמה ימים. הציון של המנוע מוסתר.</p>
+  <div class="progress" aria-live="polite">
+    <div class="progress-row"><span>דורגו <b class="num" id="done">0</b> מתוך <b class="num" id="total">0</b></span><span id="skipped"></span></div>
+    <div class="bar"><i id="bar"></i></div>
+  </div>
+
+  <section id="loading" class="card"><p class="help">טוען…</p></section>
+
+  <section id="finished" class="state hidden">
+    <h2>כל המניות דורגו</h2>
+    <p>תודה, תום. אפשר לסגור את הדף. ההשוואה למנוע רצה עם <span class="num">python -m eval.stock_grades</span>.</p>
+    <button class="btn" id="undoEmpty" type="button">ביטול הדירוג האחרון</button>
+  </section>
+
+  <section id="stock" class="card hidden" aria-labelledby="tk">
+    <div class="head">
+      <h1 class="ticker" id="tk"></h1><span class="co" id="co"></span>
+      <span class="asof" id="asof"></span>
+    </div>
+    <div id="channels"></div>
+  </section>
+
+  <form id="panel" class="panel hidden" autocomplete="off">
+    <fieldset>
+      <legend>הדירוג שלכם למניה</legend>
+      <div class="grades" id="grades"></div>
+    </fieldset>
+    <textarea id="note" rows="1" maxlength="500" placeholder="הערה (לא חובה): מה הכריע?"></textarea>
+    <p class="err" id="err" role="alert"></p>
+    <div class="actions">
+      <button class="btn primary" id="save" type="submit" disabled>שמירה</button>
+      <button class="btn" id="skip" type="button">דילוג</button>
+      <button class="btn" id="undo" type="button" disabled>ביטול האחרון</button>
+    </div>
+    <div class="legend"><span><kbd>1</kbd>–<kbd>7</kbd> דירוג מ־<span class="num">−3</span> עד <span class="num">+3</span></span><span><kbd>Enter</kbd> שמירה</span><span><kbd>K</kbd> דילוג</span><span><kbd>U</kbd> ביטול</span></div>
+  </form>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const GRADES = [[-3,"שלילי מאוד"],[-2,"שלילי"],[-1,"שלילי קל"],[0,"ניטרלי / מעורב"],[1,"חיובי קל"],[2,"חיובי"],[3,"חיובי מאוד"]];
+const CH = [["news","חדשות",true],["filings","דיווחים לרשות (SEC)",true],["social","רשתות חברתיות",false]];
+const fmt = n => (n > 0 ? "+" : n < 0 ? "−" : "") + Math.abs(n);
+let cur = null;
+
+$("grades").innerHTML = GRADES.map(([g, l]) =>
+  `<label class="opt ${g < 0 ? "c-neg" : g > 0 ? "c-pos" : "c-zero"}"><input type="radio" name="grade" value="${g}"><span><b>${fmt(g)}</b>${l}</span></label>`).join("");
+$("grades").addEventListener("change", () => { $("save").disabled = false; });
+
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function age(h) {
+  if (h == null) return "";
+  if (h < 1) return "לפני פחות משעה";
+  if (h < 24) return `לפני ${Math.round(h)} שעות`;
+  const d = Math.round(h / 24); return d === 1 ? "לפני יום" : `לפני ${d} ימים`;
+}
+function safeUrl(u) { try { const x = new URL(u); return /^https?:$/.test(x.protocol) ? x.href : ""; } catch { return ""; } }
+
+function render(res) {
+  $("loading").classList.add("hidden");
+  const p = res.progress; $("done").textContent = p.done; $("total").textContent = p.total;
+  $("bar").style.width = (p.total ? 100 * p.done / p.total : 0) + "%";
+  const sk = p.done - p.graded; $("skipped").textContent = sk ? `דולגו ${sk}` : "";
+  $("undo").disabled = !res.can_undo;
+  cur = res.stock;
+  $("stock").classList.toggle("hidden", !cur); $("panel").classList.toggle("hidden", !cur);
+  $("finished").classList.toggle("hidden", !!cur);
+  $("undoEmpty").classList.toggle("hidden", !res.can_undo);
+  if (!cur) return;
+  $("tk").textContent = cur.ticker; $("co").textContent = cur.company;
+  $("asof").textContent = cur.as_of ? "נאסף " + new Date(cur.as_of).toLocaleString("he-IL", {dateStyle: "short", timeStyle: "short"}) : "";
+  $("channels").innerHTML = CH.map(([ch, name, open]) => {
+    const its = cur.items.filter(i => i.channel === ch);
+    const body = its.length ? its.map(i => {
+      const u = safeUrl(i.url), text = (i.text || "").trim(), t = (i.title || "").trim();
+      const showText = text && !text.startsWith(t.slice(0, 60));
+      return `<article class="it"><div class="it-meta"><span class="pub">${esc(i.publisher || i.source)}</span><span class="${i.age_h < 24 ? "fresh" : ""}">${age(i.age_h)}</span></div>
+        <p class="it-title" dir="auto">${esc(t)}</p>${showText ? `<p class="it-text clamp" dir="auto">${esc(text)}</p>` : ""}
+        <div class="it-actions">${showText && text.length > 200 ? `<button class="lnk more" type="button">הצגת עוד</button>` : ""}${u ? `<a class="lnk" href="${esc(u)}" target="_blank" rel="noopener noreferrer">פתיחת המקור</a>` : ""}</div></article>`;
+    }).join("") : `<p class="empty-ch">אין פריטים בערוץ הזה</p>`;
+    return `<details class="ch"${open || its.length ? " open" : ""}><summary>${name}<span class="count num">${its.length}</span></summary><div class="items">${body}</div></details>`;
+  }).join("");
+  document.querySelectorAll("input[name=grade]").forEach(r => { r.checked = false; });
+  $("note").value = ""; $("save").disabled = true; $("err").textContent = "";
+  window.scrollTo({top: 0});
+}
+
+$("channels").addEventListener("click", e => {
+  const b = e.target.closest(".more"); if (!b) return;
+  const t = b.closest(".it").querySelector(".it-text"), c = t.classList.toggle("clamp");
+  b.textContent = c ? "הצגת עוד" : "הצגת פחות";
+});
+
+async function api(path, body) {
+  try {
+    const r = await fetch(path, body ? {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)} : {});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    render(j);
+  } catch (e) { $("err").textContent = "השמירה לא הצליחה: " + e.message + ". נסו שוב."; $("loading").classList.add("hidden"); }
+}
+function send(skip) {
+  if (!cur) return;
+  const g = document.querySelector("input[name=grade]:checked");
+  if (!skip && !g) { $("err").textContent = "בחרו דירוג לפני השמירה."; return; }
+  api("/api/grade", {ticker: cur.ticker, skip, grade: skip ? null : +g.value, note: $("note").value});
+}
+const undo = () => api("/api/undo", {});
+$("panel").addEventListener("submit", e => { e.preventDefault(); send(false); });
+$("skip").onclick = () => send(true);
+$("undo").onclick = undo; $("undoEmpty").onclick = undo;
+
+document.addEventListener("keydown", e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "textarea" || tag === "input" && e.target.type === "text") return;
+  if (e.key === "Enter") { if (tag === "button" || tag === "a" || tag === "summary") return; e.preventDefault(); send(false); return; }
+  const k = e.key.toLowerCase();
+  if (k === "u") { undo(); return; }
+  if (!cur) return;
+  if (k >= "1" && k <= "7") {
+    const r = document.querySelector('input[name=grade][value="' + (+k - 4) + '"]');
+    r.checked = true; $("save").disabled = false;
+  } else if (k === "k") send(true);
+});
+
+api("/api/next");
+</script>
+</body>
+</html>
