@@ -69,12 +69,17 @@ def read_jsonl(path) -> Iterator[dict]:
 def latest_teacher(rows: Iterable[dict]) -> list[dict]:
     """One teacher row per (id, ticker): the highest prompt version `pv` wins (rows without it are v1);
     among equal versions the first row wins, so a re-run never overwrites a label."""
+    from sentiment.config import TEACHER_MODEL_RANK
+
+    def rank(t):  # then a stronger teacher model `m` (config.TEACHER_MODEL_RANK) beats an untagged row
+        return t.get("pv", 1), TEACHER_MODEL_RANK.get(t.get("m"), 0)
+
     best: dict = {}
     for t in rows:
         if "id" not in t:
             continue
         key = (t["id"], t.get("ticker"))
-        if key not in best or t.get("pv", 1) > best[key].get("pv", 1):
+        if key not in best or rank(t) > rank(best[key]):
             best[key] = t
     return list(best.values())
 

@@ -76,6 +76,10 @@ def test_max_items(tmp_path, monkeypatch):
 def test_missing_key_exits_2(monkeypatch, capsys):
     class NoKey:
         available = False
+
+        def __init__(self, *a, **k):
+            pass
+    monkeypatch.setattr(config, "load_env", lambda: None)
     monkeypatch.setitem(sys.modules, "sentiment.llm", types.SimpleNamespace(GeminiLabeler=NoKey))
     assert teacher.main([]) == 2
     assert "GEMINI_API_KEY missing" in capsys.readouterr().out
@@ -113,3 +117,28 @@ def test_second_targets_student_buckets_only():
     got = T.second_targets(rows)
     assert got == {i for i in ids if bucket(i) < META_RESERVED} and got
     assert T.second_path("deepseek").name == "labels_deepseek.jsonl"
+
+
+def test_model_tag_wins_and_spend_cap(tmp_path, monkeypatch, capsys):
+    from train.io import latest_teacher
+    monkeypatch.setattr(config, "GEMINI_BATCH", 1)
+    monkeypatch.setattr(teacher.time, "sleep", lambda s: None)
+
+    class Paid(FakeLabeler):
+        model_tag, prompt_version = "gemini-3.8-flash", 2
+
+        def label(self, company, items):
+            self.usage["out"] += 1_000_000          # $3.75 per call
+            return super().label(company, items)
+    lab = Paid()
+    lab.usage = {"in": 0, "out": 0, "think": 0}
+    out = tmp_path / "t.jsonl"
+    teacher.run(lab, [_row(f"a{k}", "A", k + 1) for k in range(5)], set(), min_interval=0, out_path=out,
+                max_usd=7.0)
+    assert len(lab.calls) == 2 and "spend cap" in capsys.readouterr().out
+    new = list(read_jsonl(out))
+    assert all(r["m"] == "gemini-3.8-flash" for r in new)
+    old = {"id": new[0]["id"], "ticker": "A", "cls": 0, "pv": 2}
+    assert latest_teacher([old, new[0]])[0]["m"] == "gemini-3.8-flash"
+    assert latest_teacher([new[0], old])[0]["m"] == "gemini-3.8-flash"
+    assert latest_teacher([{**old, "pv": 3}, new[0]])[0]["pv"] == 3   # prompt version still ranks first

@@ -85,6 +85,10 @@ DEDUP_COSINE = 0.80         # MiniLM same-event threshold
 # Gemini (SPEC §5.0): free tier, used only when GEMINI_API_KEY is set.
 GEMINI_MODELS = ("gemini-3.5-flash-lite", "gemini-3.1-flash-lite")
 GEMINI_BATCH = 25
+# teacher rows tagged `m` with a stronger model win over untagged (Flash-Lite) rows of the same pv (SPEC 0.10)
+TEACHER_MODEL_RANK = {"gemini-3.8-flash": 1}
+# USD per 1M tokens (input, output incl. thinking), for the teacher spend cap
+GEMINI_PRICES = {"gemini-3.8-flash": (0.75, 3.75)}
 # OpenAI-compatible chat providers for the teacher prompt (sentiment.llm.OpenAICompatLabeler)
 LLM_PROVIDERS = {
     "deepseek": {"base": "https://api.deepseek.com", "model": "deepseek-chat", "key_env": "DEEPSEEK_API_KEY"},

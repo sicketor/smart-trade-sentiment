@@ -2,6 +2,11 @@
 
 python -m train.teacher [--max-items 5000] [--min-interval 4.5] [--channels news,filings,social] [--relabel-old]
 python -m train.teacher --provider deepseek [--max-items 2000]
+python -m train.teacher --model gemini-3.8-flash --key-env GEMINI_API_KEY_PAID --channels news --max-usd 20
+
+--model pins one Gemini model and tags rows `m`; items whose current row lacks that tag are queued again, and a
+stronger tag wins in train.io.latest_teacher (config.TEACHER_MODEL_RANK). --max-usd stops when the token cost
+(config.GEMINI_PRICES) passes the cap.
 
 --provider (config.LLM_PROVIDERS) runs a second labeler into data/teacher/labels_<provider>.jsonl, only on the
 items Gemini labeled for the student (bucket < META_RESERVED), so train.build_dataset can weight agreement.
@@ -53,14 +58,27 @@ def _chunks(by_ticker: dict[str, list[dict]], size: int):
                 yield t, chunk
 
 
+def cost(labeler) -> float:
+    """USD spent so far by a pinned-model labeler (0 when the model has no price)."""
+    pin, use = getattr(labeler, "model_tag", None), getattr(labeler, "usage", None)
+    if not pin or not use or pin not in config.GEMINI_PRICES:
+        return 0.0
+    pin_in, pin_out = config.GEMINI_PRICES[pin]
+    return (use["in"] * pin_in + (use["out"] + use["think"]) * pin_out) / 1e6
+
+
 def run(labeler, corpus_rows, labeled_ids, max_items=5000, min_interval=4.5,
-        channels=("news", "filings", "social"), out_path=TEACHER, only: set[str] | None = None) -> Counter:
+        channels=("news", "filings", "social"), out_path=TEACHER, only: set[str] | None = None,
+        max_usd: float | None = None) -> Counter:
     dist: Counter = Counter()
     by_ticker = pending(corpus_rows, labeled_ids, channels, only)
     sent = batches = written = 0
     last = None
     for ticker, chunk in _chunks(by_ticker, config.GEMINI_BATCH):
         if labeler.exhausted:
+            break
+        if max_usd is not None and cost(labeler) >= max_usd:
+            print(f"spend cap ${max_usd} reached (${cost(labeler):.2f}) — stopping", flush=True)
             break
         chunk = chunk[: max_items - sent]
         if not chunk:
@@ -80,18 +98,19 @@ def run(labeler, corpus_rows, labeled_ids, max_items=5000, min_interval=4.5,
         ts = datetime.now(timezone.utc).isoformat()
         rows = [{"id": i, "ticker": ticker, "cls": a["cls"], "stance": a["stance"], "event": a["event"],
                  "relevant": a["relevant"], "reason": a.get("reason", ""), "ts": ts,
-                 "pv": getattr(labeler, "prompt_version", 1), **({"about": a["about"]} if "about" in a else {})}
+                 "pv": getattr(labeler, "prompt_version", 1),
+                 **({"m": labeler.model_tag} if getattr(labeler, "model_tag", None) else {}), **({"about": a["about"]} if "about" in a else {})}
                 for i, a in answers.items()]
         append_jsonl(out_path, rows)
         written += len(rows)
         dist.update(r["cls"] for r in rows)
         if batches % 10 == 0:
-            print(f"batches={batches} sent={sent} labeled={written}", flush=True)
+            print(f"batches={batches} sent={sent} labeled={written} usd={cost(labeler):.2f}", flush=True)
         if sent >= max_items:
             break
     if labeler.exhausted:
         print("quota exhausted — resume tomorrow")
-    print(f"done: batches={batches} sent={sent} labeled={written}")
+    print(f"done: batches={batches} sent={sent} labeled={written} usd={cost(labeler):.2f}")
     print("class distribution:", {k: dist[k] for k in sorted(dist)})
     return dist
 
@@ -102,14 +121,25 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--min-interval", type=float, default=4.5)
     ap.add_argument("--channels", default="news,filings,social")
     ap.add_argument("--relabel-old", action="store_true")
+    ap.add_argument("--model", help="pin one Gemini model; relabel items not yet labeled by it (rows tagged m)")
+    ap.add_argument("--key-env", default="GEMINI_API_KEY", help="env var holding the Gemini key")
+    ap.add_argument("--max-usd", type=float, help="stop when the token cost passes this (needs a priced --model)")
     ap.add_argument("--provider", choices=sorted(config.LLM_PROVIDERS), help="second labeler (see module doc)")
     a = ap.parse_args(argv)
     if a.provider:
         return second_labeler(a)
     from sentiment.llm import GeminiLabeler
-    labeler = GeminiLabeler()
+    config.load_env()
+    if a.model:
+        labeler = GeminiLabeler(os.environ.get(a.key_env), models=(a.model,), timeout=180)
+        labeler.model_tag = a.model
+    else:
+        labeler = GeminiLabeler(os.environ.get(a.key_env))
+    if a.max_usd is not None and a.model not in config.GEMINI_PRICES:
+        print("--max-usd needs --model with a price in config.GEMINI_PRICES")
+        return 2
     if not labeler.available:
-        print("GEMINI_API_KEY missing")
+        print(f"{a.key_env} missing")
         return 2
     # one run at a time: two runs label the same pending items twice and burn the free quota
     lock = Path(TEACHER).with_suffix(".lock")
@@ -125,6 +155,10 @@ def main(argv: list[str] | None = None) -> int:
         rows = latest_teacher(read_jsonl(TEACHER))
         labeled = {r["id"] for r in rows}
         channels = tuple(c.strip() for c in a.channels.split(",") if c.strip())
+        if a.model:  # done = already labeled by this model; everything else in the channels is queued
+            done = {r["id"] for r in rows if r.get("m") == a.model}
+            run(labeler, read_jsonl(CORPUS), done, a.max_items, a.min_interval, channels, max_usd=a.max_usd)
+            return 0
         dist = run(labeler, read_jsonl(CORPUS), labeled, a.max_items, a.min_interval, channels)
         left = a.max_items - sum(dist.values())
         if a.relabel_old and left > 0 and not labeler.exhausted:

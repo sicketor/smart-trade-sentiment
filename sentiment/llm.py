@@ -119,6 +119,8 @@ class GeminiLabeler:
         config.load_env()
         self._key = api_key or os.environ.get("GEMINI_API_KEY") or ""
         self.exhausted = False
+        # tokens from usageMetadata (thinking counted apart; it is billed as output)
+        self.usage = {"in": 0, "out": 0, "think": 0}
         self.prompt_version = prompt_version
         self._template = {1: PROMPT_V1, 3: PROMPT_V3, 4: PROMPT_V4}.get(prompt_version, PROMPT_V2)
         self._schema = SCHEMA_V3 if prompt_version == 3 else SCHEMA
@@ -155,6 +157,10 @@ class GeminiLabeler:
                 log.warning("gemini %s returned HTTP %s", model, r.status_code)
                 continue
             try:
+                u = r.json().get("usageMetadata") or {}
+                self.usage["in"] += u.get("promptTokenCount", 0)
+                self.usage["out"] += u.get("candidatesTokenCount", 0)
+                self.usage["think"] += u.get("thoughtsTokenCount", 0)
                 data = json.loads(r.json()["candidates"][0]["content"]["parts"][0]["text"])
             except (KeyError, IndexError, ValueError, TypeError):
                 log.warning("gemini %s returned an unparsable body", model)

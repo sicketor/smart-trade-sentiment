@@ -212,3 +212,15 @@ def test_prompt_ab_providers_parsing():
     with pytest.raises(SystemExit):
         parse_providers("groq,bogus")
     assert parse_versions("") == []
+
+
+def test_gemini_usage_tracked(monkeypatch):
+    def post(*a, **k):
+        r = resp(200, [good(1)])
+        r._content = json.dumps({**r.json(), "usageMetadata": {"promptTokenCount": 10, "candidatesTokenCount": 4,
+                                                                "thoughtsTokenCount": 3}}).encode()
+        return r
+    monkeypatch.setattr(llm.httpx, "post", post)
+    lab = GeminiLabeler("K")
+    lab.label(CO, [item(1)])
+    assert lab.usage == {"in": 10, "out": 4, "think": 3}
