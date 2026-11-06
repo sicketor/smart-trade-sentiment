@@ -118,3 +118,18 @@ def test_pick_stratified():
     assert grades.count(-3) == 5 and grades.count(0) == 7
     short = {t: r for t, r in latest.items() if r["composite"]["grade"] != 3}   # no +3 stocks: places refilled
     assert len(pick(short, 45, random.Random(1))) == 45
+
+
+def test_undo_survives_restart_and_chains(state, tmp_path):
+    a = state.next()["stock"]["ticker"]
+    b = state.grade({"ticker": a, "grade": 1})["stock"]["ticker"]
+    state.grade({"ticker": b, "grade": -1})
+    fresh = stocks.State(tmp_path / "batch.json", tmp_path / "grades.jsonl", "tom")   # server restart
+    assert fresh.next()["can_undo"]
+    assert fresh.undo()["stock"]["ticker"] == b
+    res = fresh.undo()
+    assert res["stock"]["ticker"] == a and res["progress"]["done"] == 0 and not res["can_undo"]
+    with pytest.raises(ValueError):
+        fresh.undo()
+    res = fresh.grade({"ticker": a, "grade": 3})   # re-grade after undo
+    assert res["can_undo"] and stocks.latest_grades(fresh.grades_path, "20261107")[a]["grade"] == 3

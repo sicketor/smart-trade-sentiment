@@ -41,6 +41,21 @@ def latest_grades(path, batch_id: str) -> dict[str, dict]:
     return out
 
 
+def undo_stack(path, batch_id: str) -> list[str]:
+    """Tickers of this batch whose answer is still standing, oldest first: the last one is what undo
+    reverts. Read from the file, so undo works across server restarts and page reloads."""
+    stack: list[str] = []
+    for r in tio.read_jsonl(path):
+        t = r.get("ticker")
+        if r.get("batch") != batch_id or not t:
+            continue
+        if t in stack:
+            stack.remove(t)
+        if not r.get("undo"):
+            stack.append(t)
+    return stack
+
+
 def display_stock(s: dict) -> dict:
     """Only what Tom may see: no engine grade, score or snapshot grade."""
     co = s.get("company")
@@ -62,7 +77,6 @@ class State:
                        if (s.get("engine") or {}).get("grade") is not None}
         self.order = sorted(self.stocks)
         random.Random(zlib.crc32(f"{labeler}:{self.batch_id}".encode())).shuffle(self.order)
-        self.session: list[str] = []
         self.lock = threading.Lock()
 
     def _done(self) -> dict[str, dict]:
@@ -70,13 +84,14 @@ class State:
 
     def next(self) -> dict:
         done = self._done()
+        can_undo = any(t in self.stocks for t in undo_stack(self.grades_path, self.batch_id))
         prog = {"done": len(done), "total": len(self.order),
                 "graded": sum(1 for r in done.values() if r.get("grade") is not None)}
         for t in self.order:
             if t not in done:
                 return {"stock": display_stock(self.stocks[t]), "progress": prog,
-                        "can_undo": bool(self.session)}
-        return {"stock": None, "progress": prog, "can_undo": bool(self.session)}
+                        "can_undo": can_undo}
+        return {"stock": None, "progress": prog, "can_undo": can_undo}
 
     def grade(self, body: dict) -> dict:
         t = body.get("ticker")
@@ -93,13 +108,13 @@ class State:
             "batch": self.batch_id, "ticker": t, "grade": g, "skip": skip, "note": note,
             "labeler": self.labeler, "ts": datetime.now(timezone.utc).isoformat(),
             "as_of": self.stocks[t].get("as_of")}])
-        self.session.append(t)
         return self.next()
 
     def undo(self) -> dict:
-        if not self.session:
+        stack = [t for t in undo_stack(self.grades_path, self.batch_id) if t in self.stocks]
+        if not stack:
             raise ValueError("nothing to undo")
-        t = self.session.pop()
+        t = stack[-1]
         tio.append_jsonl(self.grades_path, [{"batch": self.batch_id, "ticker": t, "undo": True,
                                              "labeler": self.labeler,
                                              "ts": datetime.now(timezone.utc).isoformat()}])
