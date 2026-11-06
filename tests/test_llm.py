@@ -193,6 +193,14 @@ def test_compat_key_not_gemini(monkeypatch):
     assert OpenAICompatLabeler("deepseek").available is False
 
 
+def test_compat_temperature_per_provider(monkeypatch):
+    bodies = []
+    monkeypatch.setattr(llm.httpx, "post", lambda *a, **k: bodies.append(k["json"]) or chat(200, '{"labels":[]}'))
+    OpenAICompatLabeler("groq", api_key="K")._call("p")
+    OpenAICompatLabeler("openai", api_key="K")._call("p")
+    assert bodies[0]["temperature"] == 0 and "temperature" not in bodies[1]
+
+
 def test_compat_unknown_provider():
     with pytest.raises(ValueError):
         OpenAICompatLabeler("nope")

@@ -221,12 +221,15 @@ class OpenAICompatLabeler(GeminiLabeler):
         super().__init__(api_key=key, prompt_version=prompt_version)
         self._key = key  # never fall back to GEMINI_API_KEY
         self._base, self._model = cfg["base"], model or cfg["model"]
+        self._temperature = cfg.get("temperature", 0)
         self.name = provider
         self.usage = {"in": 0, "out": 0}   # tokens billed so far (the API's "usage" field)
 
     def _call(self, prompt: str, schema: dict | None = None) -> list | None:
-        body = {"model": self._model, "temperature": 0, "response_format": {"type": "json_object"},
+        body = {"model": self._model, "response_format": {"type": "json_object"},
                 "messages": [{"role": "user", "content": prompt + _SUFFIX}]}
+        if self._temperature is not None:
+            body["temperature"] = self._temperature
         n429 = 0
         for attempt in range(3):
             try:
@@ -245,7 +248,7 @@ class OpenAICompatLabeler(GeminiLabeler):
                 elif code >= 500:
                     log.warning("%s returned HTTP %s", self.name, code)
                 elif code != 200:
-                    log.warning("%s returned HTTP %s", self.name, code)
+                    log.warning("%s returned HTTP %s: %s", self.name, code, r.text[:200])
                     return None
                 else:
                     return self._parse(r)

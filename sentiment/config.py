@@ -89,5 +89,8 @@ GEMINI_BATCH = 25
 LLM_PROVIDERS = {
     "deepseek": {"base": "https://api.deepseek.com", "model": "deepseek-chat", "key_env": "DEEPSEEK_API_KEY"},
     "groq": {"base": "https://api.groq.com/openai/v1", "model": "openai/gpt-oss-120b", "key_env": "GROQ_API_KEY"},
+    # reasoning models reject temperature=0, so the field is left out (temperature None)
+    "openai": {"base": "https://api.openai.com/v1", "model": "gpt-6.1-terra", "key_env": "OPENAI_API_KEY",
+               "temperature": None},
 }
 GEMINI_MAX_ITEMS_PER_TICKER = 40
